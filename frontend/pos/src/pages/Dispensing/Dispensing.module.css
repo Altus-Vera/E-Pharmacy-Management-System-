@@ -1,0 +1,259 @@
+.page {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: var(--space-4);
+  height: calc(100vh - var(--header-height) - var(--space-12));
+}
+
+/* ── Left panel ── */
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow: hidden;
+}
+
+.searchBar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.searchInput {
+  flex: 1;
+}
+
+.drugResults {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.drugRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.drugRow:last-child {
+  border-bottom: none;
+}
+.drugRow:hover {
+  background: var(--color-primary-light);
+}
+
+.drugName {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+.drugGeneric {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+.drugMeta {
+  text-align: right;
+}
+.drugPrice {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+}
+.drugStock {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.emptyState {
+  padding: var(--space-10);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Customer bar ── */
+.customerBar {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.customerInfo {
+  flex: 1;
+}
+.customerName {
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+}
+.customerPhone {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+.customerActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── Right panel (cart) ── */
+.right {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.cartHeader {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-base);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cartItems {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.cartItem {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.cartItem:last-child {
+  border-bottom: none;
+}
+.cartItemName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-2);
+}
+.cartItemRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.qtyControl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.qtyBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  line-height: 1;
+  transition: background var(--transition-fast);
+}
+.qtyBtn:hover {
+  background: var(--color-border);
+}
+.qtyValue {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  min-width: 24px;
+  text-align: center;
+}
+.lineTotal {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+.removeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+.removeBtn:hover {
+  color: var(--color-danger);
+}
+
+/* ── Cart footer (summary + payment) ── */
+.cartFooter {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+  margin-top: var(--space-1);
+}
+.paymentSelect {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.paymentSelect:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.cartEmpty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--space-10) var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Customer search modal ── */
+.searchModalInput {
+  margin-bottom: var(--space-4);
+}
+.customerResultRow {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.customerResultRow:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-border);
+}
