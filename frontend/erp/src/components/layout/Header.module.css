@@ -1,0 +1,27 @@
+.header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--header-height);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+  z-index: 50;
+  box-shadow: var(--shadow-md);
+}
+.brand { font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); letter-spacing: -0.02em; }
+.brandSub { font-size: var(--font-size-xs); opacity: 0.75; font-weight: var(--font-weight-normal); margin-left: var(--space-2); }
+.right { display: flex; align-items: center; gap: var(--space-4); }
+.userInfo { text-align: right; }
+.userName { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
+.userRole { font-size: var(--font-size-xs); opacity: 0.75; }
+.logoutBtn {
+  background: rgba(255,255,255,0.15); color: var(--color-text-inverse);
+  border: 1px solid rgba(255,255,255,0.3); padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md); font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium); cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.logoutBtn:hover { background: rgba(255,255,255,0.25); }
