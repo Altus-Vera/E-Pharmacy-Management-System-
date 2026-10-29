@@ -1,9 +1,9 @@
 :root {
   /* ── Primary ────────────────────────────────── */
-  --color-primary:        #1D4ED8;
-  --color-primary-hover:  #1E40AF;
-  --color-primary-light:  #EFF6FF;
-  --color-primary-border: #BFDBFE;
+  --color-primary:        #166534;
+  --color-primary-hover:  #14532D;
+  --color-primary-light:  #DCFCE7;
+  --color-primary-border: #86EFAC;
 
   /* ── Semantic ───────────────────────────────── */
   --color-success:        #16A34A;
@@ -16,7 +16,7 @@
   --color-info-light:     #CFFAFE;
 
   /* ── Neutrals ───────────────────────────────── */
-  --color-bg:             #F1F5F9;
+  --color-bg:             #F0F4F0;
   --color-surface:        #FFFFFF;
   --color-surface-raised: #F8FAFC;
   --color-border:         #E2E8F0;

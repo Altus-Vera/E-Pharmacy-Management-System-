@@ -6,6 +6,7 @@ import { DashboardPage } from "../pages/Dashboard";
 import { InventoryPage } from "../pages/Inventory";
 import { SuppliersPage } from "../pages/Suppliers";
 import { PurchaseOrdersPage } from "../pages/PurchaseOrders";
+import { CustomersPage } from "../pages/Customers";
 import { UserManagementPage } from "../pages/UserManagement";
 import { ReportsPage } from "../pages/Reports";
 import { useAuthStore } from "../store/authStore";
@@ -30,6 +31,7 @@ export function AppRoutes() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="inventory" element={<InventoryPage />} />
+        <Route path="customers" element={<CustomersPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="users" element={<UserManagementPage />} />

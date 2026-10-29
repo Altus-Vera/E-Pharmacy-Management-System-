@@ -190,6 +190,44 @@ export interface StockMovement {
   created_at: string;
 }
 
+// ─── Customer ─────────────────────────────────────────────────────────────────
+
+export interface Customer {
+  id: number;
+  name: string;
+  contact_number: string;
+  email: string | null;
+  address: string | null;
+  dob: string | null;
+  gender: Gender | null;
+  loyalty_points: number;
+  discount_rate: number;
+  clinical_remarks: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerCreate {
+  name: string;
+  contact_number: string;
+  email?: string;
+  address?: string;
+  dob?: string;
+  gender?: Gender;
+  discount_rate?: number;
+  clinical_remarks?: string;
+}
+
+export interface CustomerInvoiceSummary {
+  id: number;
+  invoice_number: string;
+  total_amount: number;
+  payment_mode: string;
+  status: string;
+  created_at: string;
+}
+
 // ─── User management ──────────────────────────────────────────────────────────
 
 export interface UserCreate {

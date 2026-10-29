@@ -1,13 +1,15 @@
 import { create } from "zustand";
-import type { CartItem, Customer, Drug, PaymentMode } from "../types";
+import type { CartItem, Customer, Doctor, Drug, PaymentMode } from "../types";
 
 interface CartState {
   items: CartItem[];
   customer: Customer | null;
+  doctor: Doctor | null;
   paymentMode: PaymentMode;
   notes: string;
 
   setCustomer: (customer: Customer | null) => void;
+  setDoctor: (doctor: Doctor | null) => void;
   setPaymentMode: (mode: PaymentMode) => void;
   setNotes: (notes: string) => void;
   addItem: (drug: Drug, quantity?: number) => void;
@@ -17,6 +19,7 @@ interface CartState {
   clearCart: () => void;
 
   subtotal: () => number;
+  totalDiscount: () => number;
   total: () => number;
 }
 
@@ -28,10 +31,12 @@ function calcLineTotal(unitPrice: number, quantity: number, discountRate: number
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   customer: null,
+  doctor: null,
   paymentMode: "cash",
   notes: "",
 
   setCustomer: (customer) => set({ customer }),
+  setDoctor: (doctor) => set({ doctor }),
   setPaymentMode: (paymentMode) => set({ paymentMode }),
   setNotes: (notes) => set({ notes }),
 
@@ -95,8 +100,9 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items: get().items.filter((i) => i.drug.id !== drugId) });
   },
 
-  clearCart: () => set({ items: [], customer: null, paymentMode: "cash", notes: "" }),
+  clearCart: () => set({ items: [], customer: null, doctor: null, paymentMode: "cash", notes: "" }),
 
-  subtotal: () => get().items.reduce((sum, i) => sum + i.line_total, 0),
-  total: () => get().subtotal(),
+  subtotal: () => get().items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0),
+  totalDiscount: () => get().items.reduce((sum, i) => sum + (i.unit_price * i.quantity * i.discount_rate) / 100, 0),
+  total: () => get().items.reduce((sum, i) => sum + i.line_total, 0),
 }));

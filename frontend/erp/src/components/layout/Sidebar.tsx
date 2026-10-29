@@ -5,6 +5,7 @@ const navItems = [
   { section: "Operations" },
   { to: "/", label: "Dashboard", icon: "▦" },
   { to: "/inventory", label: "Inventory", icon: "⬡" },
+  { to: "/customers", label: "Customers", icon: "👥" },
   { to: "/suppliers", label: "Suppliers", icon: "🏭" },
   { to: "/purchase-orders", label: "Purchase Orders", icon: "📋" },
   { section: "Admin" },

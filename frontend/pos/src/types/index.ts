@@ -10,7 +10,7 @@ export type Gender = "male" | "female" | "other";
 
 export type DosageForm = "syrup" | "tablet" | "capsule" | "vial" | "other";
 
-export type PaymentMode = "cash" | "card" | "other";
+export type PaymentMode = "cash" | "card" | "qr" | "other";
 
 export type InvoiceStatus = "completed" | "cancelled";
 

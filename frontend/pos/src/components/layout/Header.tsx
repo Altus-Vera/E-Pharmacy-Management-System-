@@ -14,15 +14,23 @@ export function Header() {
 
   return (
     <header className={styles.header}>
-      <div>
-        <span className={styles.brand}>E-Pharmacy</span>
-        <span className={styles.brandSub}>POS</span>
+      <div className={styles.left}>
+        <div className={styles.brand}>
+          <span className={styles.brandName}>E-Pharmacy</span>
+          <span className={styles.terminalBadge}>Terminal POS-01</span>
+        </div>
+        <div className={styles.brandSub}>National Medicines Regulatory Authority Licensed</div>
       </div>
+
       <div className={styles.right}>
+        <div className={styles.onlineBadge}>
+          <span className={styles.onlineDot} />
+          Online
+        </div>
         {user && (
           <div className={styles.userInfo}>
             <div className={styles.userName}>{user.name}</div>
-            <div className={styles.userRole}>{formatUserType(user.user_type)}</div>
+            <div className={styles.userRole}>{formatUserType(user.user_type)} · ID: {user.username.toUpperCase()}</div>
           </div>
         )}
         <button className={styles.logoutBtn} onClick={handleLogout}>
