@@ -3,7 +3,7 @@ import type { Doctor, DoctorCreate } from "../types";
 
 export const doctorService = {
   async search(q: string): Promise<Doctor[]> {
-    const res = await api.get<Doctor[]>("/doctors/search", { params: { q } });
+    const res = await api.get<Doctor[]>("/doctors", { params: { search: q } });
     return res.data;
   },
 

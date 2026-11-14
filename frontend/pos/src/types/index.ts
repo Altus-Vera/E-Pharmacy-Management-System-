@@ -165,6 +165,7 @@ export interface InvoiceItem {
   discount_rate: number;
   discount_amount: number;
   line_total: number;
+  drug?: Drug | null;
 }
 
 export interface Invoice {
@@ -184,6 +185,7 @@ export interface Invoice {
   cancelled_at: string | null;
   cancellation_reason: string | null;
   served_by_user_id: number | null;
+  customer?: Customer | null;
   items: InvoiceItem[];
   created_at: string;
   updated_at: string;
@@ -193,7 +195,9 @@ export interface InvoiceItemCreate {
   drug_id: number;
   quantity: number;
   unit_price: number;
-  discount_rate?: number;
+  discount_rate: number;
+  discount_amount: number;
+  line_total: number;
 }
 
 export interface InvoiceCreate {
@@ -201,9 +205,23 @@ export interface InvoiceCreate {
   doctor_id?: number;
   prescription_id?: number;
   items: InvoiceItemCreate[];
-  discount_amount?: number;
-  tax_rate?: number;
-  payment_mode: PaymentMode;
+  subtotal: number;
+  discount_amount: number;
+  tax_rate: number;
+  tax_amount: number;
+  total_amount: number;
+  payment_mode: "cash" | "card" | "other";
+  notes?: string;
+}
+
+export type SalesReturnReason = "damaged" | "expired" | "wrong_item" | "patient_refusal" | "other";
+
+export interface SalesReturnCreate {
+  invoice_id: number;
+  drug_id: number;
+  quantity: number;
+  refund_amount: number;
+  reason: SalesReturnReason;
   notes?: string;
 }
 

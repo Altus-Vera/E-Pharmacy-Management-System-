@@ -3,7 +3,7 @@ import type { Customer, CustomerCreate } from "../types";
 
 export const customerService = {
   async search(q: string): Promise<Customer[]> {
-    const res = await api.get<Customer[]>("/customers/search", { params: { q } });
+    const res = await api.get<Customer[]>("/customers", { params: { search: q } });
     return res.data;
   },
 

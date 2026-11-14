@@ -12,6 +12,12 @@ from app.models.stock_movement import StockMovement, MovementType, ReferenceType
 from app.models.supplier_return import SupplierReturn, SupplierReturnItem
 from app.models.price_adjustment import PriceAdjustment
 from app.models.audit_log import AuditLog
+from app.models.stock_location import StockLocation
+from app.models.unit_of_measure import UnitOfMeasure
+from app.models.purchase_requisition import PurchaseRequisition, PurchaseRequisitionItem, RequisitionStatus
+from app.models.purchase_invoice import PurchaseInvoice, PurchaseInvoiceStatus
+from app.models.sales_return import SalesReturn, SalesReturnItem, ReturnReason
+from app.models.outlet import Outlet, StockTransfer, TransferStatus
 
 __all__ = [
     "DrugCategory",
@@ -28,4 +34,10 @@ __all__ = [
     "SupplierReturn", "SupplierReturnItem",
     "PriceAdjustment",
     "AuditLog",
+    "StockLocation",
+    "UnitOfMeasure",
+    "PurchaseRequisition", "PurchaseRequisitionItem", "RequisitionStatus",
+    "PurchaseInvoice", "PurchaseInvoiceStatus",
+    "SalesReturn", "SalesReturnItem", "ReturnReason",
+    "Outlet", "StockTransfer", "TransferStatus",
 ]

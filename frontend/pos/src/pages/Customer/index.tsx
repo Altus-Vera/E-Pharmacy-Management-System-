@@ -13,6 +13,7 @@ const emptyForm: CustomerCreate = {
   contact_number: "",
   email: "",
   address: "",
+  clinical_remarks: "",
 };
 
 export function CustomerPage() {
@@ -134,6 +135,12 @@ export function CustomerPage() {
             label="Address"
             value={form.address ?? ""}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
+          />
+          <Input
+            label="Allergy / Clinical Notes"
+            value={form.clinical_remarks ?? ""}
+            onChange={(e) => setForm({ ...form, clinical_remarks: e.target.value })}
+            placeholder="e.g. Penicillin Group Allergy"
           />
         </div>
       </Modal>

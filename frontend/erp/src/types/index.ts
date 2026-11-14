@@ -228,6 +228,47 @@ export interface CustomerInvoiceSummary {
   created_at: string;
 }
 
+// ─── Doctor ───────────────────────────────────────────────────────────────────
+
+export interface Doctor {
+  id: number;
+  name: string;
+  slmc_reg_number: string;
+  specialization: string | null;
+  hospital_clinic: string | null;
+  contact_number: string | null;
+  email: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DoctorCreate {
+  name: string;
+  slmc_reg_number: string;
+  specialization?: string;
+  hospital_clinic?: string;
+  contact_number?: string;
+  email?: string;
+}
+
+// ─── Prescription ─────────────────────────────────────────────────────────────
+
+export interface Prescription {
+  id: number;
+  customer_id: number;
+  customer_name?: string;
+  issue_date: string;
+  valid_days: number | null;
+  valid_months: number | null;
+  reproduce_type: "one_time" | "recurrent";
+  drug_details_text: string | null;
+  scan_file_path: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── User management ──────────────────────────────────────────────────────────
 
 export interface UserCreate {

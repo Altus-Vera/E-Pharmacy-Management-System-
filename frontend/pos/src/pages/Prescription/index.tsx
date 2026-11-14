@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { customerService } from "../../services/customer.service";
 import { prescriptionService } from "../../services/prescription.service";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Table } from "../../components/ui/Table";
@@ -23,6 +25,9 @@ export function PrescriptionPage() {
     reproduce_type: "one_time",
   });
   const [saving, setSaving] = useState(false);
+  const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<number | null>(null);
 
   async function searchCustomers(q: string) {
     setCustomerQuery(q);
@@ -40,6 +45,25 @@ export function PrescriptionPage() {
     setCustomerQuery(c.name);
     const list = await prescriptionService.getByCustomer(c.id);
     setPrescriptions(list);
+  }
+
+  function triggerUpload(prescriptionId: number) {
+    uploadTargetRef.current = prescriptionId;
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const id = uploadTargetRef.current;
+    if (!file || !id) return;
+    e.target.value = "";
+    setUploadingId(id);
+    try {
+      const updated = await prescriptionService.uploadScan(id, file);
+      setPrescriptions((prev) => prev.map((x) => x.id === updated.id ? updated : x));
+    } finally {
+      setUploadingId(null);
+    }
   }
 
   function openNew() {
@@ -108,12 +132,20 @@ export function PrescriptionPage() {
           {
             key: "scan_file_path",
             header: "Scan",
-            render: (r) =>
-              r.scan_file_path ? (
-                <Badge variant="success">Uploaded</Badge>
-              ) : (
-                <Badge variant="neutral">None</Badge>
-              ),
+            render: (r) => (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {r.scan_file_path ? (
+                  <a href={`${API_BASE}/uploads/${r.scan_file_path}`} target="_blank" rel="noreferrer">
+                    <Badge variant="success">View</Badge>
+                  </a>
+                ) : (
+                  <Badge variant="neutral">None</Badge>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => triggerUpload(r.id)} disabled={uploadingId === r.id}>
+                  {uploadingId === r.id ? "…" : r.scan_file_path ? "Replace" : "Upload"}
+                </Button>
+              </div>
+            ),
           },
         ]}
         data={prescriptions}
@@ -177,6 +209,14 @@ export function PrescriptionPage() {
           </div>
         </div>
       </Modal>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
     </div>
   );
 }

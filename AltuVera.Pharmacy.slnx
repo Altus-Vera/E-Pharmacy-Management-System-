@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AltuVera.Pharmacy.API/AltuVera.Pharmacy.API.csproj" />
+    <Project Path="src/AltuVera.Pharmacy.Application/AltuVera.Pharmacy.Application.csproj" />
+    <Project Path="src/AltuVera.Pharmacy.Domain/AltuVera.Pharmacy.Domain.csproj" />
+    <Project Path="src/AltuVera.Pharmacy.Infrastructure/AltuVera.Pharmacy.Infrastructure.csproj" />
+  </Folder>
+</Solution>
