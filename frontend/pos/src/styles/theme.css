@@ -6,26 +6,26 @@
   --color-primary-border: #86EFAC;
 
   /* ── Semantic ───────────────────────────────── */
-  --color-success:        #16A34A;
+  --color-success:        #15803D;
   --color-success-light:  #DCFCE7;
-  --color-warning:        #D97706;
+  --color-warning:        #B45309;
   --color-warning-light:  #FEF3C7;
-  --color-danger:         #DC2626;
+  --color-danger:         #B91C1C;
   --color-danger-light:   #FEE2E2;
-  --color-info:           #0891B2;
+  --color-info:           #0E7490;
   --color-info-light:     #CFFAFE;
 
   /* ── Neutrals ───────────────────────────────── */
-  --color-bg:             #F0F4F0;
+  --color-bg:             #E6EDE7;
   --color-surface:        #FFFFFF;
-  --color-surface-raised: #F8FAFC;
-  --color-border:         #E2E8F0;
-  --color-border-strong:  #CBD5E1;
+  --color-surface-raised: #F1F5F9;
+  --color-border:         #CBD5E1;
+  --color-border-strong:  #94A3B8;
 
-  /* ── Text ───────────────────────────────────── */
+  /* ── Text (all ≥ 4.5:1 on white) ─────────────── */
   --color-text:           #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-muted:     #94A3B8;
+  --color-text-secondary: #334155;
+  --color-text-muted:     #5B6B80;
   --color-text-inverse:   #FFFFFF;
 
   /* ── Typography ─────────────────────────────── */
