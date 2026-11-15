@@ -4,7 +4,7 @@ import { customerService } from "../../services/customer.service";
 import { doctorService } from "../../services/doctor.service";
 import { invoiceService } from "../../services/invoice.service";
 import api from "../../services/api";
-import { useCartStore } from "../../store/cartStore";
+import { useCartStore, sellableQty, sellableBatches } from "../../store/cartStore";
 import { useAuthStore } from "../../store/authStore";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
@@ -185,7 +185,7 @@ export function DispensingPage() {
     subtotal, totalDiscount, total,
   } = useCartStore();
 
-  const selectedItem = items.find((i) => i.drug.id === selectedId) ?? null;
+  const selectedItem = items.find((i) => i.key === selectedId) ?? null;
 
   // ── drug search ────────────────────────────────────────────────────────────
 
@@ -260,13 +260,14 @@ export function DispensingPage() {
   // ── cart ───────────────────────────────────────────────────────────────────
 
   function canAdd(drug: Drug): boolean {
-    if (expiryWarning(drug.expiry_date) === "danger") {
-      notify(`${drug.brand_name} batch is EXPIRED — cannot dispense`, "err");
+    const avail = sellableQty(drug);
+    if (avail === 0 && drug.quantity > 0) {
+      notify(`${drug.brand_name}: all remaining stock is EXPIRED — cannot dispense`, "err");
       return false;
     }
-    const inCart = items.find((i) => i.drug.id === drug.id)?.quantity ?? 0;
-    if (drug.quantity <= inCart) {
-      notify(drug.quantity === 0 ? `${drug.brand_name} is out of stock` : `Only ${drug.quantity} in stock`, "err");
+    const inCart = items.filter((i) => i.drug.id === drug.id).reduce((s, i) => s + i.quantity, 0);
+    if (avail <= inCart) {
+      notify(avail === 0 ? `${drug.brand_name} is out of stock` : `Only ${avail} sellable in stock`, "err");
       return false;
     }
     return true;
@@ -309,7 +310,7 @@ export function DispensingPage() {
   const autoRate = Math.max(customer?.discount_rate ?? 0, doctor?.discount_rate ?? 0);
   useEffect(() => {
     if (autoRate <= 0) return;
-    items.forEach((i) => { if (!i.discount_rate) updateDiscount(i.drug.id, autoRate); });
+    items.forEach((i) => { if (!i.discount_rate) updateDiscount(i.key, autoRate); });
   }, [autoRate, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function openRxPicker() {
@@ -396,6 +397,7 @@ export function DispensingPage() {
         verifier_password: verification && !verification.self ? verification.password : undefined,
         items: items.map((i) => ({
           drug_id: i.drug.id,
+          drug_batch_id: i.batch?.id,
           quantity: i.quantity,
           unit_price: i.unit_price,
           discount_rate: i.discount_rate,
@@ -425,6 +427,10 @@ export function DispensingPage() {
       setModal(null);
       void printHtml(renderReceipt(receipt)).then((r) => { if (!r.ok) notify(`Receipt not printed${r.printer ? ` on ${r.printer}` : ""}: ${r.error ?? "printer error"} — use Reprint`, "warn"); });
       try { localStorage.setItem(LAST_INVOICE_KEY, String(invoice.id)); } catch { /* ignore */ }
+      // Reorder alert: lines that this sale took to / below the drug's reorder level
+      const reorder = items.filter((i) => i.drug.quantity - i.quantity <= i.drug.reorder_level && i.drug.quantity > i.drug.reorder_level)
+        .map((i) => `${i.drug.brand_name} (${Math.max(i.drug.quantity - i.quantity, 0)} left)`);
+      if (reorder.length) setTimeout(() => notify(`Reorder level reached: ${reorder.join(", ")} — inform the stock manager`, "warn"), 400);
       setLastSale({ number: invoice.invoice_number, change: paidCash - netTotal, receipt });
       clearCart();
       setPrescription(null);
@@ -461,7 +467,7 @@ export function DispensingPage() {
         if (needSelected()) { setInputVal(String(selectedItem!.discount_rate || "")); setModal("lineDisc"); }
         break;
       case "voidLine":
-        if (needSelected()) { removeItem(selectedItem!.drug.id); notify(`Removed ${selectedItem!.drug.brand_name}`); }
+        if (needSelected()) { removeItem(selectedItem!.key); notify(`Removed ${selectedItem!.drug.brand_name}`); }
         break;
       case "hold":
         if (!items.length) { notify("Nothing to hold — the tray is empty", "warn"); break; }
@@ -483,8 +489,10 @@ export function DispensingPage() {
   function applyQty() {
     const q = Math.floor(Number(inputVal));
     if (!selectedItem || inputVal === "" || !Number.isFinite(q) || q < 0) { setModalError("Enter a valid quantity"); return; }
-    if (q > selectedItem.drug.quantity) { setModalError(`Only ${selectedItem.drug.quantity} in stock`); return; }
-    updateQuantity(selectedItem.drug.id, q);
+    const otherLines = items.filter((i) => i.drug.id === selectedItem.drug.id && i.key !== selectedItem.key).reduce((s, i) => s + i.quantity, 0);
+    const maxQ = sellableQty(selectedItem.drug) - otherLines;
+    if (q > maxQ) { setModalError(`Only ${maxQ} sellable in stock`); return; }
+    updateQuantity(selectedItem.key, q);
     closeModal();
   }
 
@@ -536,9 +544,8 @@ export function DispensingPage() {
       for (const it of inv.items) {
         if (!it.drug) continue;
         const fresh = await drugService.getById(it.drug_id);
-        if (expiryWarning(fresh.expiry_date) === "danger" || fresh.quantity <= 0) continue;
-        addItem(fresh, Math.min(it.quantity, fresh.quantity));
-        added++;
+        if (sellableQty(fresh) <= 0) continue;
+        if (addItem(fresh, it.quantity) > 0) added++;
       }
       if (inv.customer && !customer) setCustomer(inv.customer);
       notify(added ? `Added ${added} item(s) from ${inv.invoice_number}` : "No items could be re-added (stock/expiry)", added ? "ok" : "warn");
@@ -843,12 +850,21 @@ export function DispensingPage() {
                     <div className={styles.drugGeneric}>{drug.generic_name}{drug.strength ? ` · ${drug.strength}` : ""} · {drug.dosage_form}</div>
                   </div>
                   <div className={styles.drugRowRight}>
-                    <div className={styles.drugPrice}>{formatCurrency(drug.unit_price)}</div>
-                    <div className={styles.drugStock} style={{ color: drug.quantity <= drug.reorder_level ? "var(--color-danger)" : undefined }}>
-                      Stock: {drug.quantity}
-                    </div>
-                    {drug.quantity === 0 && <div className={styles.outOfStock}>OUT OF STOCK</div>}
-                    {drug.batch_number && <div className={styles.batchTag}>{drug.batch_number}</div>}
+                    {(() => {
+                      const bs = sellableBatches(drug);
+                      const first = bs[0];
+                      const avail = sellableQty(drug);
+                      const nextPrice = bs.find((b) => first && b.selling_price !== first.selling_price);
+                      return <>
+                        <div className={styles.drugPrice}>{formatCurrency(first ? first.selling_price : drug.unit_price)}</div>
+                        <div className={styles.drugStock} style={{ color: avail <= drug.reorder_level ? "var(--color-danger)" : undefined }}>
+                          Stock: {avail}{bs.length > 1 ? ` · ${bs.length} batches` : ""}
+                        </div>
+                        {avail === 0 && <div className={styles.outOfStock}>{drug.quantity > 0 ? "EXPIRED STOCK" : "OUT OF STOCK"}</div>}
+                        {(first?.batch_number ?? drug.batch_number) && <div className={styles.batchTag}>{first?.batch_number ?? drug.batch_number}{first ? ` · ${first.quantity_remaining} left` : ""}</div>}
+                        {nextPrice && <div className={styles.nextBatch}>Next batch {formatCurrency(nextPrice.selling_price)}</div>}
+                      </>;
+                    })()}
                   </div>
                 </div>
               ))}
@@ -865,7 +881,7 @@ export function DispensingPage() {
                   <span className={styles.otcChip}>OTC</span>
                 )}
               </div>
-              <div className={styles.trayNote}>FEFO · First Expired, First Out · ↑↓ select line</div>
+              <div className={styles.trayNote}>FIFO · first in, first out — oldest batch sells first · ↑↓ select line</div>
             </div>
 
             <div className={styles.trayScroll}>
@@ -885,12 +901,14 @@ export function DispensingPage() {
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                      const warn = expiryWarning(item.drug.expiry_date);
+                      const exp = item.batch ? item.batch.expiry_date : item.drug.expiry_date;
+                      const bno = item.batch ? item.batch.batch_number : item.drug.batch_number;
+                      const warn = expiryWarning(exp);
                       return (
                         <tr
-                          key={item.drug.id}
-                          className={`${styles.trayRow} ${item.drug.id === selectedId ? styles.trayRowSelected : ""}`}
-                          onClick={() => select(item.drug.id)}
+                          key={item.key}
+                          className={`${styles.trayRow} ${item.key === selectedId ? styles.trayRowSelected : ""}`}
+                          onClick={() => select(item.key)}
                         >
                           <td className={styles.tdNum}>{idx + 1}</td>
                           <td className={styles.tdItem}>
@@ -904,23 +922,24 @@ export function DispensingPage() {
                             </div>
                           </td>
                           <td className={styles.tdBatch}>
-                            {item.drug.batch_number && (
-                              <div className={styles.batchNum}>{item.drug.batch_number}</div>
+                            {bno && (
+                              <div className={styles.batchNum}>{bno}</div>
                             )}
-                            {item.drug.expiry_date && (
+                            {item.batch && <div className={styles.batchLeft}>{item.batch.quantity_remaining - item.quantity} left in batch</div>}
+                            {exp && (
                               <div className={styles.expiryDate} style={{ color: warn === "danger" ? "var(--color-danger)" : warn === "warning" ? "var(--color-warning)" : undefined }}>
-                                Exp: {formatDate(item.drug.expiry_date)}
+                                Exp: {formatDate(exp)}
                               </div>
                             )}
                           </td>
                           <td className={styles.tdUnit}>{item.drug.dosage_form}</td>
                           <td className={styles.tdQty}>
                             <div className={styles.qtyControl}>
-                              <button className={styles.qtyBtn} onClick={() => updateQuantity(item.drug.id, item.quantity - 1)}>−</button>
+                              <button className={styles.qtyBtn} onClick={() => updateQuantity(item.key, item.quantity - 1)}>−</button>
                               <span className={styles.qtyVal}>{item.quantity}</span>
                               <button
                                 className={styles.qtyBtn}
-                                onClick={() => updateQuantity(item.drug.id, item.quantity + 1)}
+                                onClick={() => updateQuantity(item.key, item.quantity + 1)}
                                 disabled={item.quantity >= item.drug.quantity}
                               >+</button>
                             </div>
@@ -934,13 +953,13 @@ export function DispensingPage() {
                               max={100}
                               step={0.5}
                               value={item.discount_rate}
-                              onChange={(e) => updateDiscount(item.drug.id, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateDiscount(item.key, parseFloat(e.target.value) || 0)}
                             />
                             <span className={styles.discPct}>%</span>
                           </td>
                           <td className={styles.tdTotal}>{formatCurrency(item.line_total)}</td>
                           <td className={styles.tdAct}>
-                            <button className={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeItem(item.drug.id); }} title="Remove item">✕</button>
+                            <button className={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeItem(item.key); }} title="Remove item">✕</button>
                           </td>
                         </tr>
                       );
@@ -1205,7 +1224,7 @@ export function DispensingPage() {
         <div className={styles.quickRow}>
           {[1, 2, 3, 5, 10, 20, 30, 60].map((n) => <button key={n} className={styles.quickChip} onClick={() => setInputVal(String(n))}>{n}</button>)}
         </div>
-        <div className={styles.entitySub}>Available stock: {selectedItem?.drug.quantity ?? 0} · Enter 0 to remove the line</div>
+        <div className={styles.entitySub}>Sellable stock: {selectedItem ? sellableQty(selectedItem.drug) : 0} · beyond this batch the next batch is added FIFO · Enter 0 to remove</div>
         {modalError && <div className={styles.modalErr}>{modalError}</div>}
       </Modal>
 
@@ -1216,7 +1235,7 @@ export function DispensingPage() {
           <Button onClick={() => {
             const r = Number(inputVal || 0);
             if (!selectedItem || !Number.isFinite(r) || r < 0 || r > 100) { setModalError("Enter 0–100 %"); return; }
-            updateDiscount(selectedItem.drug.id, r);
+            updateDiscount(selectedItem.key, r);
             closeModal();
           }}>Apply</Button>
         </>}>

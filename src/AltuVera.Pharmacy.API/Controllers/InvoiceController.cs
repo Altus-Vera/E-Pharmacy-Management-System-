@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Services;
 using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
@@ -47,16 +48,28 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         // Check stock, expiry and regulatory flags
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         bool anyRegulated = false, anyHighAlert = false, anyNarcotic = false;
+        foreach (var g in req.Items.GroupBy(i => i.DrugId))
+        {
+            var drug = await db.Drugs.FindAsync(g.Key);
+            if (drug is null) return BadRequest(new { detail = $"Drug {g.Key} not found" });
+            if (g.Any(i => i.Quantity <= 0)) return BadRequest(new { detail = $"Invalid quantity for {drug.BrandName}" });
+            var sellable = await BatchStock.SellableAsync(db, drug.Id);
+            if (sellable.Sum(b => b.QuantityRemaining) < g.Sum(i => i.Quantity))
+                return BadRequest(new { detail = $"Insufficient stock for {drug.BrandName}: {sellable.Sum(b => b.QuantityRemaining)} sellable (expired batches excluded)" });
+            foreach (var bg in g.Where(i => i.DrugBatchId != null).GroupBy(i => i.DrugBatchId))
+            {
+                var batch = sellable.FirstOrDefault(b => b.Id == bg.Key);
+                if (batch is null) return BadRequest(new { detail = $"{drug.BrandName}: the selected batch is sold out or expired. Re-add the item." });
+                if (batch.QuantityRemaining < bg.Sum(i => i.Quantity))
+                    return BadRequest(new { detail = $"{drug.BrandName} batch {batch.BatchNumber}: only {batch.QuantityRemaining} left. Re-add the item." });
+                if (bg.Any(i => Math.Abs(i.UnitPrice - batch.SellingPrice) > 0.005m))
+                    return BadRequest(new { detail = $"{drug.BrandName} batch {batch.BatchNumber} is now priced Rs. {batch.SellingPrice:0.00}. Re-add the item." });
+            }
+        }
         foreach (var item in req.Items)
         {
-            var drug = await db.Drugs.FindAsync(item.DrugId);
-            if (drug is null) return BadRequest(new { detail = $"Drug {item.DrugId} not found" });
+            var drug = (await db.Drugs.FindAsync(item.DrugId))!;
             if (!drug.IsActive) return BadRequest(new { detail = $"{drug.BrandName} is inactive" });
-            if (drug.ExpiryDate.HasValue && drug.ExpiryDate.Value < today)
-                return BadRequest(new { detail = $"{drug.BrandName} batch {drug.BatchNumber} is expired and cannot be sold" });
-            if (item.Quantity <= 0) return BadRequest(new { detail = $"Invalid quantity for {drug.BrandName}" });
-            if (drug.Quantity < item.Quantity)
-                return BadRequest(new { detail = $"Insufficient stock for {drug.BrandName}" });
             if (drug.IsPrescriptionOnly || drug.IsHighAlert || drug.IsNarcotic) anyRegulated = true;
             if (drug.IsHighAlert) anyHighAlert = true;
             if (drug.IsNarcotic) anyNarcotic = true;
@@ -137,19 +150,30 @@ public class InvoiceController(AppDbContext db) : ControllerBase
 
         foreach (var item in req.Items)
         {
+            var drug = (await db.Drugs.FindAsync(item.DrugId))!;
+            int? batchId;
+            if (item.DrugBatchId is not null)
+            {
+                var batch = await db.DrugBatches.FirstAsync(b => b.Id == item.DrugBatchId);
+                BatchStock.Take(batch, drug, item.Quantity);
+                batchId = batch.Id;
+            }
+            else
+            {
+                var taken = await BatchStock.ConsumeFifoAsync(db, drug, item.Quantity);
+                batchId = taken[0].Batch.Id;
+            }
+
             invoice.Items.Add(new InvoiceItem
             {
                 DrugId = item.DrugId,
+                DrugBatchId = batchId,
                 Quantity = item.Quantity,
                 UnitPrice = item.UnitPrice,
                 DiscountRate = item.DiscountRate,
                 DiscountAmount = item.DiscountAmount,
                 LineTotal = item.LineTotal,
             });
-
-            var drug = await db.Drugs.FindAsync(item.DrugId);
-            drug!.Quantity -= item.Quantity;
-            drug.UpdatedAt = DateTime.UtcNow;
 
             db.StockMovements.Add(new StockMovement
             {
@@ -173,6 +197,7 @@ public class InvoiceController(AppDbContext db) : ControllerBase
 
         db.Invoices.Add(invoice);
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, req.Items.Select(i => i.DrugId).ToArray());
         return Ok(invoice);
     }
 
@@ -199,15 +224,16 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         foreach (var item in invoice.Items)
         {
             var drug = await db.Drugs.FindAsync(item.DrugId);
-            if (drug is not null) { drug.Quantity += item.Quantity; drug.UpdatedAt = DateTime.UtcNow; }
+            if (drug is not null) await BatchStock.RestoreAsync(db, drug, item.DrugBatchId, item.Quantity);
         }
 
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, invoice.Items.Select(i => i.DrugId).ToArray());
         return Ok(invoice);
     }
 }
 
-public record InvoiceItemRequest(int DrugId, int Quantity, decimal UnitPrice, decimal DiscountRate, decimal DiscountAmount, decimal LineTotal);
+public record InvoiceItemRequest(int DrugId, int Quantity, decimal UnitPrice, decimal DiscountRate, decimal DiscountAmount, decimal LineTotal, int? DrugBatchId = null);
 public record InvoiceCreateRequest(int? CustomerId, int? DoctorId, int? PrescriptionId,
     decimal Subtotal, decimal DiscountAmount, decimal TaxRate, decimal TaxAmount, decimal TotalAmount,
     string PaymentMode, string? Notes, List<InvoiceItemRequest> Items,

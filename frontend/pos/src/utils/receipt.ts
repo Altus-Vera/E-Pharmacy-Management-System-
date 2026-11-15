@@ -67,7 +67,9 @@ function flagOf(d: CartItem["drug"]): string | undefined {
 export function cartToLines(items: CartItem[]): ReceiptLine[] {
   return items.map((i) => ({
     name: [i.drug.brand_name, i.drug.strength].filter(Boolean).join(" "),
-    sub: [i.drug.generic_name, i.drug.batch_number && `Batch ${i.drug.batch_number}`, i.drug.expiry_date && `Exp ${i.drug.expiry_date.slice(0, 7)}`]
+    sub: [i.drug.generic_name,
+      (i.batch?.batch_number ?? i.drug.batch_number) && `Batch ${i.batch?.batch_number ?? i.drug.batch_number}`,
+      (i.batch?.expiry_date ?? i.drug.expiry_date) && `Exp ${(i.batch?.expiry_date ?? i.drug.expiry_date)!.slice(0, 7)}`]
       .filter(Boolean).join(" | "),
     flag: flagOf(i.drug),
     qty: i.quantity,

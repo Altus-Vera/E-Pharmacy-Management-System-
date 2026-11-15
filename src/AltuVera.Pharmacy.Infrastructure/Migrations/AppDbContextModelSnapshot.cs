@@ -376,6 +376,79 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.ToTable("drugs", (string)null);
                 });
 
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.DrugBatch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BatchNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("batch_number");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DrugId")
+                        .HasColumnType("int")
+                        .HasColumnName("drug_id");
+
+                    b.Property<DateOnly?>("ExpiryDate")
+                        .HasColumnType("date")
+                        .HasColumnName("expiry_date");
+
+                    b.Property<int?>("GoodsReceiptItemId")
+                        .HasColumnType("int")
+                        .HasColumnName("goods_receipt_item_id");
+
+                    b.Property<DateOnly?>("ManufacturedDate")
+                        .HasColumnType("date")
+                        .HasColumnName("manufactured_date");
+
+                    b.Property<int>("QuantityReceived")
+                        .HasColumnType("int")
+                        .HasColumnName("quantity_received");
+
+                    b.Property<int>("QuantityRemaining")
+                        .HasColumnType("int")
+                        .HasColumnName("quantity_remaining");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("received_at");
+
+                    b.Property<decimal>("SellingPrice")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("selling_price");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("source");
+
+                    b.Property<decimal?>("UnitCost")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("unit_cost");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DrugId", "ReceivedAt");
+
+                    b.ToTable("drug_batches", (string)null);
+                });
+
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.DrugCategory", b =>
                 {
                     b.Property<int>("Id")
@@ -480,9 +553,22 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BatchNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("batch_number");
+
+                    b.Property<int?>("DrugBatchId")
+                        .HasColumnType("int")
+                        .HasColumnName("drug_batch_id");
+
                     b.Property<int>("DrugId")
                         .HasColumnType("int")
                         .HasColumnName("drug_id");
+
+                    b.Property<DateOnly?>("ExpiryDate")
+                        .HasColumnType("date")
+                        .HasColumnName("expiry_date");
 
                     b.Property<int>("GoodsReceiptId")
                         .HasColumnType("int")
@@ -495,6 +581,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Property<int>("QuantityReceived")
                         .HasColumnType("int")
                         .HasColumnName("quantity_received");
+
+                    b.Property<decimal?>("SellingPrice")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("selling_price");
 
                     b.Property<decimal>("UnitCost")
                         .HasPrecision(10, 2)
@@ -644,6 +735,10 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("discount_rate");
+
+                    b.Property<int?>("DrugBatchId")
+                        .HasColumnType("int")
+                        .HasColumnName("drug_batch_id");
 
                     b.Property<int>("DrugId")
                         .HasColumnType("int")
@@ -1655,6 +1750,17 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.DrugBatch", b =>
+                {
+                    b.HasOne("AltuVera.Pharmacy.Domain.Entities.Drug", "Drug")
+                        .WithMany("Batches")
+                        .HasForeignKey("DrugId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Drug");
+                });
+
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.GoodsReceipt", b =>
                 {
                     b.HasOne("AltuVera.Pharmacy.Domain.Entities.PurchaseOrder", "PurchaseOrder")
@@ -1926,6 +2032,8 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
 
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.Drug", b =>
                 {
+                    b.Navigation("Batches");
+
                     b.Navigation("PriceAdjustments");
 
                     b.Navigation("StockMovements");

@@ -15,6 +15,10 @@ import { useAuthStore } from "../../store/authStore";
 import type { Supplier } from "../../types";
 import styles from "./Inventory.module.css";
 
+interface Batch {
+  id: number; batch_number: string | null; expiry_date: string | null; quantity_received: number; quantity_remaining: number;
+  unit_cost: number | null; selling_price: number; received_at: string; source: string; is_expired: boolean;
+}
 interface PriceChange { id: number; old_price: number; new_price: number; reason: string | null; created_at: string }
 
 const emptyForm: DrugCreate = {
@@ -36,6 +40,9 @@ export function InventoryPage() {
   const [error, setError] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [history, setHistory] = useState<PriceChange[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [batchPrice, setBatchPrice] = useState<Record<number, string>>({});
+  const [batchMsg, setBatchMsg] = useState("");
   const user = useAuthStore((st) => st.user);
   const manager = isManager(user?.user_type);
 
@@ -73,9 +80,31 @@ export function InventoryPage() {
       category_id: d.category_id ?? undefined, supplier_id: d.supplier_id ?? undefined,
       is_active: d.is_active, price_change_reason: "",
     });
-    setError(""); setHistory([]);
+    setError(""); setHistory([]); setBatches([]); setBatchPrice({}); setBatchMsg("");
+    loadBatches(d.id);
     api.get<PriceChange[]>(`/drugs/${d.id}/price-history`).then((r) => setHistory(r.data)).catch(() => undefined);
     setModalOpen(true);
+  }
+
+  function loadBatches(id: number) {
+    api.get<Batch[]>(`/drugs/${id}/batches`).then((r) => setBatches(r.data)).catch(() => undefined);
+  }
+
+  /** Manager: change the selling price of one batch (older and newer stock can be priced differently). */
+  async function saveBatchPrice(b: Batch) {
+    const v = parseFloat(batchPrice[b.id]);
+    if (!Number.isFinite(v) || v < 0) { setBatchMsg("Enter a valid price."); return; }
+    try {
+      await api.patch(`/drug-batches/${b.id}`, { selling_price: v, reason: "Batch price revision" });
+      setBatchMsg(`Batch ${b.batch_number ?? b.id} now sells at ${formatCurrency(v)}.`);
+      setBatchPrice((p) => { const n = { ...p }; delete n[b.id]; return n; });
+      if (editTarget) {
+        loadBatches(editTarget.id);
+        api.get<PriceChange[]>(`/drugs/${editTarget.id}/price-history`).then((r) => setHistory(r.data)).catch(() => undefined);
+        const fresh = await drugService.getById(editTarget.id).catch(() => null);
+        if (fresh) { setDrugs((prev) => prev.map((d) => d.id === fresh.id ? fresh : d)); setForm((f) => ({ ...f, unit_price: fresh.unit_price })); }
+      }
+    } catch (e) { setBatchMsg(apiError(e)); }
   }
 
   async function handleSave() {
@@ -202,6 +231,42 @@ export function InventoryPage() {
             </div>
           </div>
         </div>
+        {editTarget && (
+          <div style={{ marginTop: "var(--space-4)" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+              Stock Batches <span style={{ fontWeight: 500, textTransform: "none", color: "var(--color-text-muted)" }}>· sold first-in, first-out (top row sells first)</span>
+            </div>
+            {batches.length === 0 ? <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No stock on hand.</div> : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead><tr style={{ background: "var(--color-surface-raised)" }}>
+                  <th style={{ textAlign: "left", padding: 6 }}>#</th><th style={{ textAlign: "left", padding: 6 }}>Batch</th><th style={{ textAlign: "left", padding: 6 }}>Expiry</th>
+                  <th style={{ textAlign: "left", padding: 6 }}>Received</th><th style={{ textAlign: "right", padding: 6 }}>Left / Recv</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>Cost</th><th style={{ textAlign: "right", padding: 6 }}>Selling Price</th>
+                </tr></thead>
+                <tbody>{batches.map((b, i) => (
+                  <tr key={b.id} style={{ borderBottom: "1px solid var(--color-border)", background: i === 0 && !b.is_expired ? "var(--color-primary-light)" : undefined }}>
+                    <td style={{ padding: 6 }}>{i + 1}{i === 0 && !b.is_expired && <Badge variant="success">Selling now</Badge>}</td>
+                    <td style={{ padding: 6 }}>{b.batch_number ?? "—"} <span style={{ color: "var(--color-text-muted)", fontSize: 11 }}>{b.source}</span></td>
+                    <td style={{ padding: 6 }}>{b.expiry_date ? formatDate(b.expiry_date) : "—"} {b.is_expired && <Badge variant="danger">Expired</Badge>}</td>
+                    <td style={{ padding: 6 }}>{formatDate(b.received_at)}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>{b.quantity_remaining} / {b.quantity_received}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>{b.unit_cost != null ? formatCurrency(b.unit_cost) : "—"}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
+                      {manager ? (
+                        <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                          <input type="number" step="0.01" min={0} style={{ width: 90, textAlign: "right", padding: "3px 6px" }}
+                            value={batchPrice[b.id] ?? String(b.selling_price)} onChange={(e) => setBatchPrice((p) => ({ ...p, [b.id]: e.target.value }))} />
+                          {batchPrice[b.id] !== undefined && parseFloat(batchPrice[b.id]) !== b.selling_price &&
+                            <Button size="sm" onClick={() => saveBatchPrice(b)}>Save</Button>}
+                        </span>
+                      ) : <strong>{formatCurrency(b.selling_price)}</strong>}
+                    </td>
+                  </tr>))}</tbody>
+              </table>
+            )}
+            {batchMsg && <div style={{ fontSize: 13, marginTop: 6 }}>{batchMsg}</div>}
+          </div>
+        )}
         {history.length > 0 && (
           <div style={{ marginTop: "var(--space-4)" }}>
             <div style={{ fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>Price History</div>

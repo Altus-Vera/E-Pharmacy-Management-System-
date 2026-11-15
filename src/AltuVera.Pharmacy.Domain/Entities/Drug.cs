@@ -34,6 +34,8 @@ public class Drug
 
     public DrugCategory? Category { get; set; }
     public Supplier? Supplier { get; set; }
+    /// <summary>Batches with stock, oldest first (filled by the API when listing).</summary>
+    public ICollection<DrugBatch> Batches { get; set; } = [];
     [System.Text.Json.Serialization.JsonIgnore] public ICollection<PriceAdjustment> PriceAdjustments { get; set; } = [];
     [System.Text.Json.Serialization.JsonIgnore] public ICollection<StockMovement> StockMovements { get; set; } = [];
 }

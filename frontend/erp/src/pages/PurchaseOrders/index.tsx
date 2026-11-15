@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { purchaseOrderService } from "../../services/purchaseOrder.service";
 import { supplierService } from "../../services/supplier.service";
-import { grnService } from "../../services/grn.service";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Table } from "../../components/ui/Table";
@@ -22,6 +22,7 @@ const statusVariant = (st: string): "warning" | "success" | "danger" | "primary"
 const poTotal = (p: PurchaseOrder) => p.items.reduce((a, i) => a + i.quantity_ordered * i.unit_cost, 0);
 
 export function PurchaseOrdersPage() {
+  const navigate = useNavigate();
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,24 +91,9 @@ export function PurchaseOrdersPage() {
     finally { setBusy(false); }
   }
 
-  /** Receive every outstanding quantity: creates a GRN (which adds stock) and marks the order received. */
-  async function receiveAll(p: PurchaseOrder) {
-    const lines = p.items
-      .map((i) => ({ drug_id: i.drug_id, quantity_received: i.quantity_ordered - (i.quantity_received ?? 0), unit_cost: i.unit_cost, is_free_goods: false }))
-      .filter((l) => l.quantity_received > 0);
-    if (!lines.length) { setError("Nothing outstanding to receive."); return; }
-    if (!confirm(`Receive ${lines.length} line(s) into stock for ${p.order_number}?`)) return;
-    setBusy(true); setError("");
-    try {
-      await grnService.create({
-        purchase_order_id: p.id, supplier_id: p.supplier_id, received_date: todayIso(),
-        notes: `Received against ${p.order_number}`, items: lines,
-      });
-      await purchaseOrderService.updateStatus(p.id, "received");
-      setDetail(null);
-      await load();
-    } catch (e) { setError(apiError(e)); }
-    finally { setBusy(false); }
+  /** Receiving needs batch number, expiry and selling price per line, so it opens the GRN form pre-filled from this order. */
+  function receiveAll(p: PurchaseOrder) {
+    navigate(`/grn?po=${p.id}`);
   }
 
   const filtered = pos.filter((p) => {

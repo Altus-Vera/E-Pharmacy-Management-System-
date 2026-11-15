@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Services;
 using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
@@ -47,11 +48,14 @@ public class SalesReturnController(AppDbContext db) : ControllerBase
     {
         var ret = await db.SalesReturns.Include(r => r.Drug).FirstOrDefaultAsync(r => r.Id == id);
         if (ret is null) return NotFound();
+        if (ret.Status == SalesReturnStatus.Approved) return BadRequest(new { detail = "Return already approved" });
         ret.Status = SalesReturnStatus.Approved;
-        ret.Drug.Quantity += ret.Quantity;
-        ret.Drug.UpdatedAt = DateTime.UtcNow;
+        var soldFrom = await db.InvoiceItems.Where(i => i.InvoiceId == ret.InvoiceId && i.DrugId == ret.DrugId && i.DrugBatchId != null)
+            .Select(i => i.DrugBatchId).FirstOrDefaultAsync();
+        await BatchStock.RestoreAsync(db, ret.Drug, soldFrom, ret.Quantity);
         ret.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, ret.DrugId);
         return Ok(ret);
     }
 }

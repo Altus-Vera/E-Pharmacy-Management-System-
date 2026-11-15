@@ -20,7 +20,7 @@ public class ReportController(AppDbContext db) : ControllerBase
         var todayEnd = today.AddDays(1);
 
         var totalDrugs = await db.Drugs.CountAsync(d => d.IsActive);
-        var lowStockCount = await db.Drugs.CountAsync(d => d.IsActive && d.Quantity <= d.LowStockThreshold);
+        var lowStockCount = await db.Drugs.CountAsync(d => d.IsActive && (d.Quantity <= d.ReorderLevel || d.Quantity <= d.LowStockThreshold));
         var expiringThreshold = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(90));
         var expiringSoonCount = await db.Drugs.CountAsync(d => d.ExpiryDate.HasValue && d.ExpiryDate <= expiringThreshold);
         var todaySales = await db.Invoices.Where(i => i.CreatedAt >= todayStart && i.CreatedAt < todayEnd && i.Status == InvoiceStatus.Completed).SumAsync(i => (decimal?)i.TotalAmount) ?? 0;

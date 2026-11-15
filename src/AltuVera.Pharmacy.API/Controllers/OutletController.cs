@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Services;
 using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
@@ -77,15 +78,14 @@ public class StockTransferController(AppDbContext db) : ControllerBase
         var newStatus = Enum.Parse<TransferStatus>(req.Status, true);
         if (newStatus == TransferStatus.Received && transfer.Status != TransferStatus.Received)
         {
-            if (transfer.Drug.Quantity < transfer.Quantity)
-                return BadRequest(new { detail = "Insufficient stock for transfer" });
-            transfer.Drug.Quantity -= transfer.Quantity;
-            transfer.Drug.UpdatedAt = DateTime.UtcNow;
+            try { await BatchStock.ConsumeFifoAsync(db, transfer.Drug, transfer.Quantity); }
+            catch (InvalidOperationException ex) { return BadRequest(new { detail = ex.Message }); }
             transfer.ApprovedByUserId = userId;
         }
         transfer.Status = newStatus;
         transfer.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, transfer.DrugId);
         return Ok(transfer);
     }
 }
@@ -108,8 +108,7 @@ public class StockAdjustmentController(AppDbContext db) : ControllerBase
         if (drug is null) return NotFound(new { detail = "Drug not found" });
 
         var adjType = Enum.Parse<AdjustmentType>(req.AdjustmentType, true);
-        if (adjType == AdjustmentType.Decrease && drug.Quantity < req.Quantity)
-            return BadRequest(new { detail = "Insufficient stock" });
+        if (req.Quantity <= 0) return BadRequest(new { detail = "Quantity must be above zero." });
 
         var adj = new StockAdjustment
         {
@@ -117,12 +116,27 @@ public class StockAdjustmentController(AppDbContext db) : ControllerBase
             DrugId = req.DrugId, Quantity = req.Quantity, AdjustmentType = adjType,
             Reason = req.Reason, AdjustedByUserId = userId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
-        drug.Quantity += adjType == AdjustmentType.Increase ? req.Quantity : -req.Quantity;
-        drug.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            if (adjType == AdjustmentType.Increase)
+            {
+                if (req.DrugBatchId is not null) await BatchStock.RestoreAsync(db, drug, req.DrugBatchId, req.Quantity);
+                else BatchStock.Receive(db, drug, req.Quantity, drug.UnitPrice, "Manual", drug.BatchNumber, drug.ExpiryDate);
+            }
+            else if (req.DrugBatchId is not null)
+            {
+                var b = await db.DrugBatches.FirstOrDefaultAsync(x => x.Id == req.DrugBatchId && x.DrugId == drug.Id);
+                if (b is null) return BadRequest(new { detail = "Batch not found for this drug" });
+                BatchStock.Take(b, drug, req.Quantity);
+            }
+            else await BatchStock.ConsumeFifoAsync(db, drug, req.Quantity, includeExpired: true);   // write-offs take expired stock first
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { detail = ex.Message }); }
 
         db.StockAdjustments.Add(adj);
         db.StockMovements.Add(new StockMovement { DrugId = req.DrugId, MovementType = MovementType.Adjustment, Quantity = adjType == AdjustmentType.Increase ? req.Quantity : -req.Quantity, ReferenceType = ReferenceType.Manual, Notes = req.Reason, PerformedByUserId = userId, CreatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, drug.Id);
         return Ok(adj);
     }
 }
@@ -195,7 +209,7 @@ public class UomController(AppDbContext db) : ControllerBase
 
 public record OutletRequest(string Name, string Code, string? Address, string? ContactNumber, string? ManagerName, bool IsHeadOffice);
 public record TransferRequest(int FromOutletId, int ToOutletId, int DrugId, int Quantity, string? Notes);
-public record AdjustmentRequest(int DrugId, int Quantity, string AdjustmentType, string Reason);
+public record AdjustmentRequest(int DrugId, int Quantity, string AdjustmentType, string Reason, int? DrugBatchId = null);
 public record LocationRequest(string Name, string? Description);
 public record UomRequest(string Name, string? Abbreviation);
 public record LocationUpdateRequest(string? Name, string? Description, bool? IsActive);

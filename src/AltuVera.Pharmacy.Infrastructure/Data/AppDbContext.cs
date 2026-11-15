@@ -8,6 +8,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Drug> Drugs => Set<Drug>();
+    public DbSet<DrugBatch> DrugBatches => Set<DrugBatch>();
     public DbSet<DrugCategory> DrugCategories => Set<DrugCategory>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Doctor> Doctors => Set<Doctor>();
@@ -220,6 +221,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Prescription).WithMany(p => p.Invoices).HasForeignKey(x => x.PrescriptionId).OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<DrugBatch>(e =>
+        {
+            e.ToTable("drug_batches");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.DrugId).HasColumnName("drug_id");
+            e.Property(x => x.BatchNumber).HasColumnName("batch_number").HasMaxLength(50);
+            e.Property(x => x.ManufacturedDate).HasColumnName("manufactured_date");
+            e.Property(x => x.ExpiryDate).HasColumnName("expiry_date");
+            e.Property(x => x.QuantityReceived).HasColumnName("quantity_received");
+            e.Property(x => x.QuantityRemaining).HasColumnName("quantity_remaining");
+            e.Property(x => x.UnitCost).HasColumnName("unit_cost").HasPrecision(10, 2);
+            e.Property(x => x.SellingPrice).HasColumnName("selling_price").HasPrecision(10, 2);
+            e.Property(x => x.ReceivedAt).HasColumnName("received_at");
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(20);
+            e.Property(x => x.GoodsReceiptItemId).HasColumnName("goods_receipt_item_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasOne(x => x.Drug).WithMany(d => d.Batches).HasForeignKey(x => x.DrugId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.DrugId, x.ReceivedAt });
+        });
+
         modelBuilder.Entity<InvoiceItem>(e =>
         {
             e.ToTable("invoice_items");
@@ -232,6 +255,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.DiscountRate).HasColumnName("discount_rate").HasPrecision(5, 2);
             e.Property(x => x.DiscountAmount).HasColumnName("discount_amount").HasPrecision(10, 2);
             e.Property(x => x.LineTotal).HasColumnName("line_total").HasPrecision(12, 2);
+            e.Property(x => x.DrugBatchId).HasColumnName("drug_batch_id");
             e.HasOne(x => x.Invoice).WithMany(i => i.Items).HasForeignKey(x => x.InvoiceId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Drug).WithMany().HasForeignKey(x => x.DrugId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -299,6 +323,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.QuantityReceived).HasColumnName("quantity_received");
             e.Property(x => x.UnitCost).HasColumnName("unit_cost").HasPrecision(10, 2);
             e.Property(x => x.IsFreeGoods).HasColumnName("is_free_goods");
+            e.Property(x => x.BatchNumber).HasColumnName("batch_number").HasMaxLength(50);
+            e.Property(x => x.ExpiryDate).HasColumnName("expiry_date");
+            e.Property(x => x.SellingPrice).HasColumnName("selling_price").HasPrecision(10, 2);
+            e.Property(x => x.DrugBatchId).HasColumnName("drug_batch_id");
             e.HasOne(x => x.GoodsReceipt).WithMany(gr => gr.Items).HasForeignKey(x => x.GoodsReceiptId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Drug).WithMany().HasForeignKey(x => x.DrugId).OnDelete(DeleteBehavior.Restrict);
         });

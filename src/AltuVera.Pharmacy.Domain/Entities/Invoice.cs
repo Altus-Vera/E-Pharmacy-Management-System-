@@ -41,6 +41,7 @@ public class InvoiceItem
     public decimal DiscountRate { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal LineTotal { get; set; }
+    public int? DrugBatchId { get; set; }
 
     public Invoice Invoice { get; set; } = null!;
     public Drug Drug { get; set; } = null!;

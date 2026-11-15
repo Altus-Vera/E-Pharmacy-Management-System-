@@ -1630,3 +1630,7 @@
 .payBalance strong { font-size: 1.3rem; }
 .payBalanceNeg { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
 .payHint { font-size: 0.78rem; color: #64748b; margin-top: 6px; }
+
+/* Batch (FIFO) hints */
+.batchLeft { font-size: 0.68rem; color: #64748b; }
+.nextBatch { font-size: 0.68rem; font-weight: 700; color: #b45309; margin-top: 2px; }

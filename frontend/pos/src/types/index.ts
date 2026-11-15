@@ -127,6 +127,22 @@ export interface Drug {
   supplier_id: number | null;
   created_at: string;
   updated_at: string;
+  /** Sellable batches, oldest received first (FIFO). */
+  batches?: DrugBatch[];
+}
+
+export interface DrugBatch {
+  id: number;
+  drug_id: number;
+  batch_number: string | null;
+  manufactured_date: string | null;
+  expiry_date: string | null;
+  quantity_received: number;
+  quantity_remaining: number;
+  unit_cost: number | null;
+  selling_price: number;
+  received_at: string;
+  source: string;
 }
 
 // ─── Prescription ─────────────────────────────────────────────────────────────
@@ -194,6 +210,7 @@ export interface Invoice {
 
 export interface InvoiceItemCreate {
   drug_id: number;
+  drug_batch_id?: number;
   quantity: number;
   unit_price: number;
   discount_rate: number;
@@ -232,7 +249,11 @@ export interface SalesReturnCreate {
 // ─── Cart (POS local state) ───────────────────────────────────────────────────
 
 export interface CartItem {
+  /** `${drugId}:${batchId}` — one line per batch */
+  key: string;
   drug: Drug;
+  /** Batch this line sells from (FIFO); its price is the line's unit price. */
+  batch: DrugBatch | null;
   quantity: number;
   unit_price: number;
   discount_rate: number;

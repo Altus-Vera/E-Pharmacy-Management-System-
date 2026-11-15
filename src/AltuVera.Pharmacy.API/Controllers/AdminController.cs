@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Services;
 using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
@@ -51,7 +52,6 @@ public class SupplierReturnController(AppDbContext db) : ControllerBase
         var drug = await db.Drugs.FindAsync(req.DrugId);
         if (drug is null) return NotFound(new { detail = "Drug not found" });
         if (!await db.Suppliers.AnyAsync(s => s.Id == req.SupplierId)) return NotFound(new { detail = "Supplier not found" });
-        if (drug.Quantity < req.Quantity) return BadRequest(new { detail = $"Only {drug.Quantity} in stock." });
 
         var userId = int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid) ? uid : (int?)null;
         var ret = new SupplierReturn
@@ -61,8 +61,17 @@ public class SupplierReturnController(AppDbContext db) : ControllerBase
             UnitCost = req.UnitCost, Reason = req.Reason, ProcessedByUserId = userId,
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
-        drug.Quantity -= req.Quantity;
-        drug.UpdatedAt = DateTime.UtcNow;
+        try
+        {
+            if (req.DrugBatchId is not null)
+            {
+                var b = await db.DrugBatches.FirstOrDefaultAsync(x => x.Id == req.DrugBatchId && x.DrugId == drug.Id);
+                if (b is null) return BadRequest(new { detail = "Batch not found for this drug" });
+                BatchStock.Take(b, drug, req.Quantity);
+            }
+            else await BatchStock.ConsumeFifoAsync(db, drug, req.Quantity, includeExpired: true);
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { detail = ex.Message }); }
         db.SupplierReturns.Add(ret);
         db.StockMovements.Add(new StockMovement
         {
@@ -71,6 +80,7 @@ public class SupplierReturnController(AppDbContext db) : ControllerBase
             PerformedByUserId = userId, CreatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
+        await BatchStock.SyncAsync(db, drug.Id);
         return Ok(ret);
     }
 }
@@ -105,7 +115,7 @@ public class SystemAdminController(AppDbContext db) : ControllerBase
     }
 }
 
-public record SupplierReturnRequest(int SupplierId, int DrugId, int Quantity, decimal UnitCost, string? Reason);
+public record SupplierReturnRequest(int SupplierId, int DrugId, int Quantity, decimal UnitCost, string? Reason, int? DrugBatchId = null);
 public class BackupRow
 {
     public DateTime? FinishedAt { get; set; }

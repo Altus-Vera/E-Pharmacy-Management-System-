@@ -7,6 +7,8 @@ export interface GrnItem {
   unit_cost: number;
   batch_number: string | null;
   expiry_date: string | null;
+  selling_price: number | null;
+  drug_batch_id: number | null;
   is_free_goods: boolean;
 }
 
@@ -29,7 +31,12 @@ export interface GrnItemCreate {
   unit_cost: number;
   batch_number?: string;
   expiry_date?: string;
+  manufactured_date?: string;
+  /** Selling price for this new stock; it becomes its own batch, sold after older batches (FIFO). */
+  selling_price?: number;
   is_free_goods?: boolean;
+  /** UI only: the drug's current selling price, for comparison */
+  current_price?: number;
 }
 
 export interface GrnCreate {

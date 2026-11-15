@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Services;
 using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
@@ -89,21 +90,38 @@ public class GoodsReceiptController(AppDbContext db) : ControllerBase
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
+        if (req.Items is null || req.Items.Count == 0) return BadRequest(new { detail = "GRN has no items" });
+        var pairs = new List<(GoodsReceiptItem Line, DrugBatch Batch)>();
         foreach (var item in req.Items)
         {
-            grn.Items.Add(new GoodsReceiptItem { DrugId = item.DrugId, QuantityReceived = item.QuantityReceived, UnitCost = item.UnitCost, IsFreeGoods = item.IsFreeGoods });
+            if (item.QuantityReceived <= 0) return BadRequest(new { detail = "Received quantity must be above zero." });
             var drug = await db.Drugs.FindAsync(item.DrugId);
-            if (drug is not null) { drug.Quantity += item.QuantityReceived; drug.UpdatedAt = DateTime.UtcNow; }
-            db.StockMovements.Add(new StockMovement { DrugId = item.DrugId, MovementType = MovementType.Purchase, Quantity = item.QuantityReceived, UnitCost = item.UnitCost, ReferenceType = ReferenceType.GoodsReceipt, PerformedByUserId = userId, CreatedAt = DateTime.UtcNow });
+            if (drug is null) return BadRequest(new { detail = $"Drug {item.DrugId} not found" });
+            if (item.SellingPrice is < 0) return BadRequest(new { detail = $"Selling price for {drug.BrandName} cannot be negative." });
+            if (item.ExpiryDate is { } exp && exp < BatchStock.Today) return BadRequest(new { detail = $"{drug.BrandName} batch {item.BatchNumber} is already expired." });
+            var price = item.SellingPrice ?? drug.UnitPrice;   // new stock may carry a new selling price
+            var line = new GoodsReceiptItem
+            {
+                DrugId = item.DrugId, QuantityReceived = item.QuantityReceived, UnitCost = item.UnitCost, IsFreeGoods = item.IsFreeGoods,
+                BatchNumber = item.BatchNumber, ExpiryDate = item.ExpiryDate, SellingPrice = price,
+            };
+            grn.Items.Add(line);
+            var batch = BatchStock.Receive(db, drug, item.QuantityReceived, price, "GRN", item.BatchNumber, item.ExpiryDate, item.ManufacturedDate,
+                item.IsFreeGoods ? 0 : item.UnitCost);
+            pairs.Add((line, batch));
+            db.StockMovements.Add(new StockMovement { DrugId = item.DrugId, MovementType = MovementType.Purchase, Quantity = item.QuantityReceived, UnitCost = item.UnitCost, ReferenceType = ReferenceType.GoodsReceipt, Notes = item.BatchNumber is null ? null : $"Batch {item.BatchNumber}", PerformedByUserId = userId, CreatedAt = DateTime.UtcNow });
         }
         db.GoodsReceipts.Add(grn);
         await db.SaveChangesAsync();
+        foreach (var (line, batch) in pairs) { line.DrugBatchId = batch.Id; batch.GoodsReceiptItemId = line.Id; }
+        await BatchStock.SyncAsync(db, req.Items.Select(i => i.DrugId).ToArray());
         return Ok(grn);
     }
 }
 
 public record PoItemRequest(int DrugId, int QuantityOrdered, decimal UnitCost);
 public record PurchaseOrderRequest(int SupplierId, DateOnly OrderDate, DateOnly? ExpectedDeliveryDate, string? Remarks, List<PoItemRequest> Items);
-public record GrnItemRequest(int DrugId, int QuantityReceived, decimal UnitCost, bool IsFreeGoods);
+public record GrnItemRequest(int DrugId, int QuantityReceived, decimal UnitCost, bool IsFreeGoods,
+    string? BatchNumber = null, DateOnly? ExpiryDate = null, DateOnly? ManufacturedDate = null, decimal? SellingPrice = null);
 public record GrnRequest(int? PurchaseOrderId, int SupplierId, DateOnly ReceivedDate, string? Notes, List<GrnItemRequest> Items);
 public record StatusRequest(string Status);

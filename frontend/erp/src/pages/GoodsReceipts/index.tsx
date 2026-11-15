@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { grnService, type GoodsReceipt, type GrnCreate, type GrnItemCreate } from "../../services/grn.service";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -26,7 +27,16 @@ export function GoodsReceiptsPage() {
   const [form, setForm] = useState<Omit<GrnCreate, "items">>({ supplier_id: 0, received_date: today, notes: "" });
   const [items, setItems] = useState<GrnItemCreate[]>([{ drug_id: 0, quantity_received: 1, unit_cost: 0 }]);
 
+  const [params, setParams] = useSearchParams();
   useEffect(() => { load(); }, []);
+  // "Receive" on a purchase order lands here with ?po=<id>: open the form with that order's lines
+  useEffect(() => {
+    const po = Number(params.get("po"));
+    if (!po || !openPOs.some(p => p.id === po)) return;
+    openNew();
+    pickPo(po);
+    setParams({}, { replace: true });
+  }, [openPOs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true);
@@ -56,7 +66,8 @@ export function GoodsReceiptsPage() {
     if (!po) { setForm(f => ({ ...f, purchase_order_id: undefined })); return; }
     setForm(f => ({ ...f, purchase_order_id: po.id, supplier_id: po.supplier_id }));
     const lines = po.items
-      .map(i => ({ drug_id: i.drug_id, quantity_received: Math.max(i.quantity_ordered - (i.quantity_received ?? 0), 0), unit_cost: i.unit_cost, is_free_goods: false }))
+      .map(i => ({ drug_id: i.drug_id, quantity_received: Math.max(i.quantity_ordered - (i.quantity_received ?? 0), 0), unit_cost: i.unit_cost, is_free_goods: false,
+        selling_price: (i.drug as { unit_price?: number } | undefined)?.unit_price, current_price: (i.drug as { unit_price?: number } | undefined)?.unit_price }))
       .filter(l => l.quantity_received > 0);
     if (lines.length) setItems(lines);
   }
@@ -70,9 +81,15 @@ export function GoodsReceiptsPage() {
   async function save() {
     if (!form.supplier_id) { setError("Select a supplier."); return; }
     if (items.some(i => !i.drug_id || i.quantity_received <= 0)) { setError("Every line needs a drug and a quantity above zero."); return; }
+    if (items.some(i => !i.batch_number?.trim() || !i.expiry_date)) { setError("Every line needs the batch number and expiry date printed on the pack."); return; }
+    if (items.some(i => i.expiry_date && i.expiry_date < today)) { setError("A batch is already expired — do not receive it."); return; }
+    if (items.some(i => i.selling_price === undefined || i.selling_price < 0)) { setError("Every line needs a selling price."); return; }
     setSaving(true); setError("");
     try {
-      await grnService.create({ ...form, items: items.map(i => ({ drug_id: i.drug_id, quantity_received: i.quantity_received, unit_cost: i.unit_cost, is_free_goods: !!i.is_free_goods })) });
+      await grnService.create({ ...form, items: items.map(i => ({
+        drug_id: i.drug_id, quantity_received: i.quantity_received, unit_cost: i.unit_cost, is_free_goods: !!i.is_free_goods,
+        batch_number: i.batch_number?.trim(), expiry_date: i.expiry_date, selling_price: i.selling_price,
+      })) });
       if (form.purchase_order_id) await purchaseOrderService.updateStatus(form.purchase_order_id, "received").catch(() => undefined);
       setModalOpen(false);
       load();
@@ -146,14 +163,31 @@ export function GoodsReceiptsPage() {
               <Button size="sm" variant="ghost" onClick={addItem}>+ Add Item</Button>
             </div>
             {items.map((item, idx) => (
-              <div key={idx} className={styles.itemRow}>
-                <DrugPicker label="Drug" value={item.drug_id} onChange={d => updateItem(idx, "drug_id", d?.id ?? 0)} />
-                <Input label="Qty" type="number" value={item.quantity_received} onChange={e => updateItem(idx, "quantity_received", parseInt(e.target.value) || 1)} />
-                <Input label="Unit Cost" type="number" step="0.01" value={item.unit_cost} onChange={e => updateItem(idx, "unit_cost", parseFloat(e.target.value) || 0)} />
-                <label className={styles.freeLabel}>
-                  <input type="checkbox" checked={!!item.is_free_goods} onChange={e => setItems(prev => prev.map((it, i) => i === idx ? { ...it, is_free_goods: e.target.checked } : it))} /> Free
-                </label>
-                {items.length > 1 && <button className={styles.removeBtn} onClick={() => removeItem(idx)}>✕</button>}
+              <div key={idx} className={styles.batchLine}>
+                <div className={styles.itemRow}>
+                  <DrugPicker label="Drug" value={item.drug_id} onChange={d => setItems(prev => prev.map((it, i) => i === idx
+                    ? { ...it, drug_id: d?.id ?? 0, current_price: d?.unit_price, selling_price: it.selling_price ?? d?.unit_price }
+                    : it))} />
+                  <Input label="Qty" type="number" value={item.quantity_received} onChange={e => updateItem(idx, "quantity_received", parseInt(e.target.value) || 1)} />
+                  <Input label="Unit Cost" type="number" step="0.01" value={item.unit_cost} onChange={e => updateItem(idx, "unit_cost", parseFloat(e.target.value) || 0)} />
+                  <label className={styles.freeLabel}>
+                    <input type="checkbox" checked={!!item.is_free_goods} onChange={e => setItems(prev => prev.map((it, i) => i === idx ? { ...it, is_free_goods: e.target.checked } : it))} /> Free
+                  </label>
+                  {items.length > 1 && <button className={styles.removeBtn} onClick={() => removeItem(idx)}>✕</button>}
+                </div>
+                <div className={styles.batchRow}>
+                  <Input label="Batch No *" value={item.batch_number ?? ""} onChange={e => updateItem(idx, "batch_number", e.target.value)} placeholder="As on pack" />
+                  <Input label="Expiry *" type="date" min={today} value={item.expiry_date ?? ""} onChange={e => updateItem(idx, "expiry_date", e.target.value)} />
+                  <Input label="Selling Price (Rs.) *" type="number" step="0.01" min={0} value={item.selling_price ?? ""}
+                    onChange={e => updateItem(idx, "selling_price", e.target.value === "" ? undefined : parseFloat(e.target.value))} />
+                  <div className={styles.priceHint}>
+                    {item.current_price !== undefined && item.selling_price !== undefined && Math.abs(item.selling_price - item.current_price) > 0.004
+                      ? <span className={styles.priceChanged}>Current stock sells at Rs. {item.current_price.toFixed(2)} — this batch will sell at Rs. {item.selling_price.toFixed(2)} once older stock is sold (FIFO)</span>
+                      : item.current_price !== undefined ? <span>Same as current price Rs. {item.current_price.toFixed(2)}</span> : null}
+                    {item.selling_price !== undefined && item.unit_cost > 0 && !item.is_free_goods &&
+                      <span> · Margin {(((item.selling_price - item.unit_cost) / item.selling_price) * 100 || 0).toFixed(1)}%</span>}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -177,13 +211,16 @@ export function GoodsReceiptsPage() {
               {detailGrn.notes && <div><span style={{ color: "var(--color-text-muted)" }}>Notes:</span> {detailGrn.notes}</div>}
             </div>
             <table className={styles.detailTable}>
-              <thead><tr><th>Drug ID</th><th>Qty</th><th>Unit Cost</th><th>Free</th><th>Line Total</th></tr></thead>
+              <thead><tr><th>Drug ID</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Unit Cost</th><th>Selling</th><th>Free</th><th>Line Total</th></tr></thead>
               <tbody>
                 {detailGrn.items.map(it => (
                   <tr key={it.id}>
                     <td>#{it.drug_id}</td>
+                    <td>{it.batch_number ?? "—"}</td>
+                    <td>{it.expiry_date ?? "—"}</td>
                     <td>{it.quantity_received}</td>
                     <td>{Number(it.unit_cost).toFixed(2)}</td>
+                    <td>{it.selling_price != null ? Number(it.selling_price).toFixed(2) : "—"}</td>
                     <td>{it.is_free_goods ? "Yes" : "—"}</td>
                     <td>{it.is_free_goods ? "0.00" : (it.quantity_received * Number(it.unit_cost)).toFixed(2)}</td>
                   </tr>
