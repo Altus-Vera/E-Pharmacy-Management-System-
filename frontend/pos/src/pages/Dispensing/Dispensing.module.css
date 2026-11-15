@@ -1592,3 +1592,41 @@
   .netStrip { padding: 10px 14px; }
   .checkoutBtn { height: 44px; }
 }
+
+/* Function keys — semantic roles: neutral (default), accent (patient/prescriber links), danger (destructive) */
+.fnKey_neutral { background: #fff; color: #0f172a; box-shadow: inset 0 0 0 1px #94a3b8, 0 1px 2px rgba(15,23,42,.08); }
+.fnKey_neutral .fnKeySub { background: #e2e8f0; color: #334155; }
+.fnKey_neutral:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; box-shadow: inset 0 0 0 1.5px #475569; transform: translateY(-1px); }
+.fnKey_accent { background: linear-gradient(180deg, #2563eb, #1d4ed8); color: #fff; }
+.fnKey_accent:hover:not(:disabled) { color: #fff; filter: brightness(1.08); transform: translateY(-1px); }
+.fnKey_danger { background: #fff; color: #b91c1c; box-shadow: inset 0 0 0 1.5px #dc2626, 0 1px 2px rgba(15,23,42,.08); }
+.fnKey_danger .fnKeySub { background: #fee2e2; color: #991b1b; }
+.fnKey_danger:hover:not(:disabled) { background: #dc2626; color: #fff; transform: translateY(-1px); }
+.fnKey_danger:hover:not(:disabled) .fnKeySub { background: rgba(255,255,255,.25); color: #fff; }
+/* disabled must look clearly different from neutral: faded, dashed, no shadow */
+.fnKey:disabled { background: #f8fafc; color: #94a3b8; box-shadow: none; outline: 1px dashed #cbd5e1; outline-offset: -1px; cursor: not-allowed; }
+.fnKey:disabled .fnKeySub { background: #f1f5f9; color: #94a3b8; }
+
+/* ── Payment modal ─────────────────────────────────────────────────────────── */
+.payModal { display: flex; flex-direction: column; gap: 14px; }
+.payDue { display: flex; flex-direction: column; align-items: center; padding: 14px; border-radius: 12px; background: linear-gradient(135deg, #166534, #14532d); color: #fff; }
+.payDue span { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; }
+.payDue strong { font-size: 2rem; font-weight: 800; line-height: 1.15; }
+.payDue small { font-size: 0.78rem; opacity: 0.85; }
+.payMethods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.payMethod { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 10px; background: #fff; border: 1.5px solid #cbd5e1; cursor: pointer; color: #0f172a; }
+.payMethod:hover { border-color: #166534; }
+.payMethodActive { border: 2px solid #166534; background: #f0fdf4; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+.payMethodLabel { font-weight: 700; font-size: 0.95rem; }
+.payMethodHint { font-size: 0.7rem; color: #64748b; }
+.payBody { display: flex; flex-direction: column; }
+.payLabel { font-size: 0.75rem; font-weight: 700; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.payInput { font-size: 1.5rem; font-weight: 700; padding: 10px 12px; border: 1.5px solid #94a3b8; border-radius: 10px; text-align: right; font-family: inherit; }
+.payInput:focus { outline: none; border-color: #166534; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+.payQuick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+.payQuick button { padding: 8px 4px; border-radius: 8px; border: 1px solid #94a3b8; background: #fff; font-weight: 600; cursor: pointer; color: #0f172a; }
+.payQuick button:hover { background: #f1f5f9; }
+.payBalance { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; border: 1px solid #86efac; color: #14532d; }
+.payBalance strong { font-size: 1.3rem; }
+.payBalanceNeg { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+.payHint { font-size: 0.78rem; color: #64748b; margin-top: 6px; }

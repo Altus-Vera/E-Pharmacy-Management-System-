@@ -46,7 +46,7 @@ const isTyping = (el: Element | null) =>
 type ModalKind =
   | null | "customer" | "doctor" | "priceCheck" | "qty" | "lineDisc" | "billDisc" | "note"
   | "hold" | "recall" | "sales" | "return" | "xreport" | "newPatient" | "history" | "help" | "confirmNew"
-  | "rx" | "newRx" | "verify";
+  | "rx" | "newRx" | "verify" | "payment";
 
 type FnAction =
   | "patient" | "prescriber" | "search" | "priceCheck" | "qty" | "lineDisc" | "voidLine"
@@ -58,18 +58,18 @@ type ActAction =
 
 // ── function key definitions (12 slots, 3 cols × 4 rows) ─────────────────────
 const FN_BUTTONS: { label: string; sub: string; color: string; action: FnAction }[] = [
-  { label: "Link Patient",    sub: "F4",       color: "blue",   action: "patient" },
-  { label: "Link Prescriber", sub: "F5",       color: "teal",   action: "prescriber" },
-  { label: "Drug Search",     sub: "F1",       color: "purple", action: "search" },
-  { label: "Price Check",     sub: "F2",       color: "orange", action: "priceCheck" },
-  { label: "Change Qty",      sub: "F8",       color: "blue",   action: "qty" },
-  { label: "Line Discount",   sub: "F9",       color: "teal",   action: "lineDisc" },
-  { label: "Void Line",       sub: "DEL",      color: "pink",   action: "voidLine" },
-  { label: "Hold Bill",       sub: "F6",       color: "orange", action: "hold" },
-  { label: "Recall Bill",     sub: "F7",       color: "purple", action: "recall" },
-  { label: "Bill Discount",   sub: "F10",      color: "teal",   action: "billDisc" },
-  { label: "Bill Note",       sub: "ALT+N",    color: "blue",   action: "note" },
-  { label: "New Sale",        sub: "CTRL+DEL", color: "pink",   action: "newSale" },
+  { label: "Link Patient",    sub: "F4",       color: "accent",   action: "patient" },
+  { label: "Link Prescriber", sub: "F5",       color: "accent",   action: "prescriber" },
+  { label: "Drug Search",     sub: "F1",       color: "neutral", action: "search" },
+  { label: "Price Check",     sub: "F2",       color: "neutral", action: "priceCheck" },
+  { label: "Change Qty",      sub: "F8",       color: "neutral",   action: "qty" },
+  { label: "Line Discount",   sub: "F9",       color: "neutral",   action: "lineDisc" },
+  { label: "Void Line",       sub: "DEL",      color: "danger",   action: "voidLine" },
+  { label: "Hold Bill",       sub: "F6",       color: "neutral", action: "hold" },
+  { label: "Recall Bill",     sub: "F7",       color: "neutral", action: "recall" },
+  { label: "Bill Discount",   sub: "F10",      color: "neutral",   action: "billDisc" },
+  { label: "Bill Note",       sub: "ALT+N",    color: "neutral",   action: "note" },
+  { label: "New Sale",        sub: "CTRL+DEL", color: "danger",   action: "newSale" },
 ];
 
 // ── action button definitions (12 slots, 3 cols × 4 rows) ────────────────────
@@ -111,6 +111,7 @@ export function DispensingPage() {
 
   // modal routing
   const [modal, setModal] = useState<ModalKind>(null);
+  const [payRef, setPayRef] = useState("");
   const [salesMode, setSalesMode] = useState<"view" | "void" | "return">("view");
   const closeModal = useCallback(() => { setModal(null); setTimeout(() => searchRef.current?.focus(), 0); }, []);
 
@@ -365,14 +366,24 @@ export function DispensingPage() {
     };
   }
 
-  async function handleCheckout() {
-    if (items.length === 0) return;
-    if (paymentMode === "cash" && tendered > 0 && tendered < netTotal) {
-      setCheckoutError(`Cash tendered (Rs. ${tendered.toFixed(2)}) is less than the net payable.`);
-      return;
-    }
+  /** Complete Sale / F12: run the dispensing checks, then ask how the customer is paying. */
+  function startCheckout() {
+    if (items.length === 0 || submitting) return;
     setCheckoutError(null);
     if (!complianceReady()) return;
+    setPayRef("");
+    setModal("payment");
+  }
+
+  const payShort = paymentMode === "cash" && tendered > 0 && tendered < netTotal - 0.004;
+  const payRefMissing = paymentMode !== "cash" && payRef.trim().length < 4;
+
+  /** Confirm Payment: records the invoice, prints the receipt and shows the result. */
+  async function handleCheckout() {
+    if (items.length === 0) return;
+    if (payShort) { setCheckoutError(`Cash tendered (Rs. ${tendered.toFixed(2)}) is less than the net payable.`); return; }
+    if (payRefMissing) { setCheckoutError(paymentMode === "card" ? "Enter the card approval code from the terminal slip." : "Enter the LankaQR transaction reference."); return; }
+    setCheckoutError(null);
     setSubmitting(true);
     try {
       const sub = subtotal();
@@ -397,16 +408,22 @@ export function DispensingPage() {
         tax_amount: 0,
         total_amount: +netTotal.toFixed(2),
         payment_mode: apiPayMode(paymentMode),
-        notes: notes || undefined,
+        notes: [notes, paymentMode !== "cash" && payRef.trim() ? `${PAY_LABEL[paymentMode]} ref: ${payRef.trim()}` : ""].filter(Boolean).join(" | ") || undefined,
       });
       const paidCash = paymentMode === "cash" ? (tendered || netTotal) : 0;
       const receipt = buildReceipt("TAX INVOICE", {
         number: invoice.invoice_number,
         paymentMode: PAY_LABEL[paymentMode],
+        payment: { method: PAY_LABEL[paymentMode], amount: netTotal, reference: paymentMode !== "cash" ? payRef.trim() : undefined },
         tendered: paymentMode === "cash" ? paidCash : undefined,
         change: paymentMode === "cash" ? paidCash - netTotal : undefined,
+        prescriptionId: hasRegulated ? prescription?.id : undefined,
+        verifiedBy: verification ? (verification.self ? user?.name : verification.username) : undefined,
+        loyaltyEarned: (invoice as { loyalty_points_earned?: number }).loyalty_points_earned || undefined,
       });
       saveLastReceipt(receipt);
+      setModal(null);
+      void printHtml(renderReceipt(receipt)).then((r) => { if (!r.ok) notify(`Receipt not printed${r.printer ? ` on ${r.printer}` : ""}: ${r.error ?? "printer error"} — use Reprint`, "warn"); });
       try { localStorage.setItem(LAST_INVOICE_KEY, String(invoice.id)); } catch { /* ignore */ }
       setLastSale({ number: invoice.invoice_number, change: paidCash - netTotal, receipt });
       clearCart();
@@ -537,7 +554,7 @@ export function DispensingPage() {
       case "return": void openSales("return"); break;
       case "reprint": {
         const r = loadLastReceipt();
-        if (r) printHtml(renderReceipt({ ...r, title: `${r.title} (REPRINT)` }));
+        if (r) printHtml(renderReceipt({ ...r, reprint: true }));
         else notify("No previous receipt on this terminal", "warn");
         break;
       }
@@ -706,7 +723,7 @@ export function DispensingPage() {
     if (modal || pomWarningDrug || lastSale) return;
     if (fnMap[e.key]) { e.preventDefault(); runFn(fnMap[e.key]); return; }
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
-    if (e.key === "F12") { e.preventDefault(); if (items.length > 0 && !submitting) void handleCheckout(); return; }
+    if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
     if (e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); runFn("note"); return; }
     if (e.ctrlKey && e.key === "Delete") { e.preventDefault(); runFn("newSale"); return; }
     const searchEmpty = !drugQuery;
@@ -1041,28 +1058,15 @@ export function DispensingPage() {
           {/* ── Numpad + display ─────────────────────────────────────────── */}
           <div className={styles.numpadSection}>
 
-            {/* Payment mode tabs */}
-            <div className={styles.payModeTabs}>
-              {(["cash", "card", "qr"] as PaymentMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  className={`${styles.payModeTab} ${paymentMode === mode ? styles.payModeTabActive : ""}`}
-                  onClick={() => setPaymentMode(mode)}
-                >
-                  {mode === "cash" ? "Cash" : mode === "card" ? "Card" : "LankaQR"}
-                </button>
-              ))}
-            </div>
-
             {/* Amount display */}
             <div className={styles.numpadDisplay}>
               <span className={styles.numpadDisplayLabel}>
-                {paymentMode === "cash" ? "CASH TENDERED" : paymentMode === "card" ? "CARD AMOUNT" : "QR AMOUNT"}
+                CASH TENDERED
               </span>
               <span className={styles.numpadDisplayValue}>
                 Rs.&nbsp;{cashTendered || "0"}
               </span>
-              {paymentMode === "cash" && tendered > 0 && (
+              {tendered > 0 && (
                 <span className={`${styles.numpadChange} ${change < 0 ? styles.numpadChangeNeg : ""}`}>
                   {change >= 0 ? `Change  Rs. ${change.toFixed(2)}` : "⚠ Insufficient"}
                 </span>
@@ -1082,15 +1086,6 @@ export function DispensingPage() {
               ))}
             </div>
 
-            {/* Quick presets */}
-            <div className={styles.numpadPresets}>
-              <button className={styles.presetChip} onClick={() => setCashTendered(netTotal.toFixed(2))}>Exact</button>
-              {[500, 1000, 2000, 5000].map((v) => (
-                <button key={v} className={styles.presetChip} onClick={() => setCashTendered((Math.ceil(netTotal / v) * v).toFixed(2))}>
-                  {v >= 1000 ? `${v/1000}K` : v}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* ── Checkout ─────────────────────────────────────────────────── */}
@@ -1098,7 +1093,7 @@ export function DispensingPage() {
             <button
               className={styles.checkoutBtn}
               disabled={items.length === 0 || submitting}
-              onClick={handleCheckout}
+              onClick={startCheckout}
             >
               {submitting ? "Processing…" : `Complete Sale (F12) · ${formatCurrency(netTotal)}`}
             </button>
@@ -1571,6 +1566,68 @@ export function DispensingPage() {
         </div>
       </Modal>
 
+      {/* Payment modal — opened by Complete Sale / F12 */}
+      <Modal open={modal === "payment"} onClose={() => { if (!submitting) closeModal(); }} title="Payment" size="md"
+        footer={<>
+          <Button variant="secondary" disabled={submitting} onClick={closeModal}>Back to Bill</Button>
+          <Button disabled={submitting || payShort || payRefMissing} onClick={() => void handleCheckout()}>
+            {submitting ? "Processing…" : `Confirm & Print · ${formatCurrency(netTotal)}`}
+          </Button>
+        </>}>
+        <div className={styles.payModal}
+          onKeyDown={(e) => { if (e.key === "Enter" && !submitting && !payShort && !payRefMissing) { e.preventDefault(); void handleCheckout(); } }}>
+          <div className={styles.payDue}>
+            <span>Amount Due</span>
+            <strong>{formatCurrency(netTotal)}</strong>
+            <small>{items.length} item{items.length === 1 ? "" : "s"} · {itemCount} unit{itemCount === 1 ? "" : "s"}{totalDiscount() > 0 ? ` · Discount ${formatCurrency(totalDiscount())}` : ""}</small>
+          </div>
+
+          <div className={styles.payMethods}>
+            {([["cash", "Cash", "Notes & coins"], ["card", "Card", "Visa / Master / Amex"], ["qr", "LankaQR", "Scan & pay"]] as [PaymentMode, string, string][]).map(([m, label, hint]) => (
+              <button key={m} type="button"
+                className={`${styles.payMethod} ${paymentMode === m ? styles.payMethodActive : ""}`}
+                onClick={() => { setPaymentMode(m); setPayRef(""); setCheckoutError(null); }}>
+                <span className={styles.payMethodLabel}>{label}</span>
+                <span className={styles.payMethodHint}>{hint}</span>
+              </button>
+            ))}
+          </div>
+
+          {paymentMode === "cash" ? (
+            <div className={styles.payBody}>
+              <label className={styles.payLabel}>Cash Tendered (Rs.)</label>
+              <input className={styles.payInput} inputMode="decimal" autoFocus placeholder={netTotal.toFixed(2)}
+                value={cashTendered} onChange={(e) => setCashTendered(e.target.value.replace(/[^0-9.]/g, ""))} />
+              <div className={styles.payQuick}>
+                <button type="button" onClick={() => setCashTendered(netTotal.toFixed(2))}>Exact</button>
+                {[100, 500, 1000, 5000].map((v) => {
+                  const amt = Math.ceil(netTotal / v) * v;
+                  return <button type="button" key={v} onClick={() => setCashTendered(amt.toFixed(2))}>{amt.toLocaleString()}</button>;
+                })}
+              </div>
+              <div className={`${styles.payBalance} ${payShort ? styles.payBalanceNeg : ""}`}>
+                <span>{payShort ? "Short by" : "Balance to give"}</span>
+                <strong>{formatCurrency(Math.abs((tendered || netTotal) - netTotal))}</strong>
+              </div>
+              <div className={styles.payHint}>Leave blank for exact cash.</div>
+            </div>
+          ) : (
+            <div className={styles.payBody}>
+              <div className={styles.payHint} style={{ marginBottom: 8 }}>
+                {paymentMode === "card"
+                  ? <>Charge <b>{formatCurrency(netTotal)}</b> on the card terminal, then enter the approval code from its slip.</>
+                  : <>Ask the customer to scan the LankaQR code and pay <b>{formatCurrency(netTotal)}</b>, then enter the transaction reference.</>}
+              </div>
+              <label className={styles.payLabel}>{paymentMode === "card" ? "Approval Code" : "Transaction Reference"}</label>
+              <input className={styles.payInput} autoFocus value={payRef} maxLength={30}
+                placeholder={paymentMode === "card" ? "e.g. 482913" : "e.g. LQR-2611150042"}
+                onChange={(e) => setPayRef(e.target.value)} />
+            </div>
+          )}
+          {checkoutError && <div className={styles.modalErr}>{checkoutError}</div>}
+        </div>
+      </Modal>
+
       {/* Success modal */}
       <Modal
         open={!!lastSale}
@@ -1578,14 +1635,14 @@ export function DispensingPage() {
         title="Sale Completed"
         size="sm"
         footer={<>
-          <Button variant="secondary" onClick={() => lastSale && printHtml(renderReceipt(lastSale.receipt))}>Print Receipt</Button>
+          <Button variant="secondary" onClick={() => lastSale && printHtml(renderReceipt({ ...lastSale.receipt, reprint: true }))}>Reprint Receipt</Button>
           <Button onClick={() => { setLastSale(null); searchRef.current?.focus(); }}>New Sale (F1)</Button>
         </>}
       >
         <div className={styles.successBody}>
           <div className={styles.successIcon}>✓</div>
           <div className={styles.successTitle}>Invoice #{lastSale?.number}</div>
-          <div className={styles.successSub}>Sale recorded successfully.</div>
+          <div className={styles.successSub}>Payment received · {lastSale?.receipt.payment?.method ?? lastSale?.receipt.paymentMode} · receipt sent to printer.</div>
           {lastSale && lastSale.change > 0 && <div className={styles.successChange}>Change due: {formatCurrency(lastSale.change)}</div>}
         </div>
       </Modal>

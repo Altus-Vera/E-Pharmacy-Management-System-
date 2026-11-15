@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 
@@ -93,6 +93,33 @@ function pollForServer() {
     setTimeout(pollForServer, RETRY_INTERVAL);
   });
 }
+
+// ── Silent receipt printing ───────────────────────────────────────────────────
+// Prints straight to the receipt printer (no Windows print dialog), like a till.
+// Printer: RECEIPT_PRINTER env var (exact name as in Windows "Printers & scanners"), otherwise the Windows default printer.
+ipcMain.handle('list-printers', async () => {
+  const list = await mainWindow.webContents.getPrintersAsync();
+  return list.map((p) => ({ name: p.name, isDefault: p.isDefault }));
+});
+
+ipcMain.handle('print-receipt', async (_e, html) => {
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
+  try {
+    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const printers = await win.webContents.getPrintersAsync();
+    const wanted = process.env.RECEIPT_PRINTER;
+    const device = (wanted && printers.find((p) => p.name === wanted)) || printers.find((p) => p.isDefault);
+    if (!device) return { ok: false, error: 'No printer is installed' };
+    return await new Promise((resolve) => {
+      win.webContents.print(
+        { silent: true, printBackground: false, deviceName: device.name, margins: { marginType: 'none' } },
+        (ok, reason) => resolve(ok ? { ok: true, printer: device.name } : { ok: false, error: reason, printer: device.name })
+      );
+    });
+  } finally {
+    setTimeout(() => win.destroy(), 500);
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();
