@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -37,6 +38,7 @@ public class DrugController(AppDbContext db) : ControllerBase
         return d is null ? NotFound() : Ok(d);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] DrugRequest req)
     {
@@ -49,16 +51,34 @@ public class DrugController(AppDbContext db) : ControllerBase
         return Ok(drug);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] DrugRequest req)
     {
         var drug = await db.Drugs.FindAsync(id);
         if (drug is null) return NotFound();
+        var priceChanged = drug.UnitPrice != req.UnitPrice || drug.Discount != req.Discount;
+        if (priceChanged && !(User.IsInRole(R.PharmacyManager) || User.IsInRole(R.Admin)))
+            return StatusCode(403, new { detail = "Only a Pharmacy Manager can change price or discount." });
+        if (drug.UnitPrice != req.UnitPrice)
+        {
+            var uid = int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var u) ? u : (int?)null;
+            db.PriceAdjustments.Add(new PriceAdjustment
+            {
+                DrugId = drug.Id, OldPrice = drug.UnitPrice, NewPrice = req.UnitPrice,
+                Reason = string.IsNullOrWhiteSpace(req.PriceChangeReason) ? "Price updated" : req.PriceChangeReason,
+                AdjustedByUserId = uid, CreatedAt = DateTime.UtcNow,
+            });
+        }
         MapToDrug(drug, req);
         drug.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return Ok(drug);
     }
+
+    [HttpGet("{id:int}/price-history")]
+    public async Task<IActionResult> PriceHistory(int id) =>
+        Ok(await db.PriceAdjustments.Where(p => p.DrugId == id).OrderByDescending(p => p.CreatedAt).ToListAsync());
 
     private static Drug MapToDrug(Drug drug, DrugRequest req)
     {
@@ -99,6 +119,7 @@ public class DrugCategoryController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List() => Ok(await db.DrugCategories.OrderBy(c => c.Name).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CategoryRequest req)
     {
@@ -108,6 +129,7 @@ public class DrugCategoryController(AppDbContext db) : ControllerBase
         return Ok(cat);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] CategoryRequest req)
     {
@@ -126,5 +148,5 @@ public record DrugRequest(string ItemCode, string BrandName, string GenericName,
     string? BatchNumber, DateOnly? ManufacturedDate, DateOnly? ExpiryDate, decimal UnitPrice,
     decimal Discount, int Quantity, int? PackSize, int LowStockThreshold, int ReorderLevel,
     bool IsPrescriptionOnly, bool IsOtc, bool IsHighAlert, bool IsNarcotic, bool IsActive,
-    int? CategoryId, int? SupplierId);
+    int? CategoryId, int? SupplierId, string? PriceChangeReason = null);
 public record CategoryRequest(string Name, string? Description);

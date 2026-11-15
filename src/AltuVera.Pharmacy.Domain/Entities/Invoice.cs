@@ -20,6 +20,8 @@ public class Invoice
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
     public int? ServedByUserId { get; set; }
+    public int? VerifiedByUserId { get; set; }
+    public int LoyaltyPointsEarned { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

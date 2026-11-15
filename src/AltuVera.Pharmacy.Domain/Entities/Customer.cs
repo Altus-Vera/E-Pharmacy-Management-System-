@@ -18,6 +18,6 @@ public class Customer
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public ICollection<Prescription> Prescriptions { get; set; } = [];
-    public ICollection<Invoice> Invoices { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<Prescription> Prescriptions { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<Invoice> Invoices { get; set; } = [];
 }

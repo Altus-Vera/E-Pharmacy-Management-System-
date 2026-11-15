@@ -14,6 +14,7 @@ import {
   cartToLines, invoiceToLines, loadLastReceipt, printHtml, renderReceipt, saveLastReceipt, type ReceiptData,
 } from "../../utils/receipt";
 import type { Drug, Customer, Doctor, PaymentMode, Invoice, Gender, SalesReturnReason } from "../../types";
+import { PrescriptionForm, type RxCreated } from "../../components/PrescriptionForm";
 import styles from "./Dispensing.module.css";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -44,7 +45,8 @@ const isTyping = (el: Element | null) =>
 
 type ModalKind =
   | null | "customer" | "doctor" | "priceCheck" | "qty" | "lineDisc" | "billDisc" | "note"
-  | "hold" | "recall" | "sales" | "return" | "xreport" | "newPatient" | "history" | "help" | "confirmNew";
+  | "hold" | "recall" | "sales" | "return" | "xreport" | "newPatient" | "history" | "help" | "confirmNew"
+  | "rx" | "newRx" | "verify";
 
 type FnAction =
   | "patient" | "prescriber" | "search" | "priceCheck" | "qty" | "lineDisc" | "voidLine"
@@ -160,6 +162,14 @@ export function DispensingPage() {
   // POM warning
   const [pomWarningDrug, setPomWarningDrug] = useState<Drug | null>(null);
 
+  // regulatory compliance (POM / High Alert / Narcotic)
+  const [prescription, setPrescription] = useState<RxCreated | null>(null);
+  const [rxList, setRxList] = useState<RxCreated[]>([]);
+  const [verification, setVerification] = useState<{ self: boolean; username?: string; password?: string } | null>(null);
+  const [verifyUser, setVerifyUser] = useState("");
+  const [verifyPass, setVerifyPass] = useState("");
+  const [verifySelf, setVerifySelf] = useState(false);
+
   // toast
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "warn" | "err" } | null>(null);
   const notify = useCallback((msg: string, kind: "ok" | "warn" | "err" = "ok") => {
@@ -230,7 +240,9 @@ export function DispensingPage() {
   }
 
   function selectCustomer(c: Customer) {
+    if (customer?.id !== c.id) { setPrescription(null); setVerification(null); }
     setCustomer(c);
+    if (c.discount_rate > 0) notify(`${c.name}: ${c.discount_rate}% customer discount applied`, "ok");
     closeModal();
     setCustomerResults([]);
     setCustomerQuery("");
@@ -238,6 +250,7 @@ export function DispensingPage() {
 
   function selectDoctor(d: Doctor) {
     setDoctor(d);
+    if (d.discount_rate > 0) notify(`Dr. ${d.name}: ${d.discount_rate}% doctor discount applied`, "ok");
     closeModal();
     setDoctorResults([]);
     setDoctorQuery("");
@@ -261,7 +274,7 @@ export function DispensingPage() {
   function handleAddDrug(drug: Drug) {
     if (!canAdd(drug)) return;
     // Show POM advisory if no doctor linked — but don't block
-    if (drug.is_prescription_only && !doctor) {
+    if ((drug.is_prescription_only || drug.is_high_alert || drug.is_narcotic) && !prescription) {
       setPomWarningDrug(drug);
       return;
     }
@@ -285,8 +298,45 @@ export function DispensingPage() {
   const lineDiscTotal = totalDiscount() - billDiscount;
   const tendered = parseFloat(cashTendered) || 0;
   const change = tendered - netTotal;
-  const hasPom = items.some(i => i.drug.is_prescription_only);
-  const isRxSale = !!doctor || hasPom;
+  const hasRegulated = items.some(i => i.drug.is_prescription_only || i.drug.is_high_alert || i.drug.is_narcotic);
+  const hasHighRisk = items.some(i => i.drug.is_high_alert || i.drug.is_narcotic);
+  const hasNarcotic = items.some(i => i.drug.is_narcotic);
+  const isRxSale = !!doctor || hasRegulated;
+  const canSelfVerify = ["pharmacist", "pharmacymanager", "systemadministrator"].includes((user?.user_type ?? "").replace(/_/g, "").toLowerCase());
+
+  // Customer / doctor discount rates apply automatically to lines that have no discount yet
+  const autoRate = Math.max(customer?.discount_rate ?? 0, doctor?.discount_rate ?? 0);
+  useEffect(() => {
+    if (autoRate <= 0) return;
+    items.forEach((i) => { if (!i.discount_rate) updateDiscount(i.drug.id, autoRate); });
+  }, [autoRate, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function openRxPicker() {
+    if (!customer) { notify("Link the patient first (F4)", "warn"); setModal("customer"); return; }
+    setModal("rx");
+    try {
+      const r = await api.get<RxCreated[]>("/prescriptions", { params: { customerId: customer.id } });
+      setRxList(r.data);
+    } catch { setRxList([]); }
+  }
+
+  function rxValidUntil(rx: RxCreated): Date {
+    const d = new Date(rx.issue_date);
+    if (!rx.valid_days && !rx.valid_months) { d.setMonth(d.getMonth() + 1); return d; }
+    d.setDate(d.getDate() + (rx.valid_days ?? 0));
+    d.setMonth(d.getMonth() + (rx.valid_months ?? 0));
+    return d;
+  }
+
+  /** Returns true when the bill satisfies the dispensing rules; otherwise opens the step that is missing. */
+  function complianceReady(): boolean {
+    if (!hasRegulated) return true;
+    if (!customer) { setCheckoutError("POM / High Alert / Narcotic items need a linked patient."); setModal("customer"); return false; }
+    if (!prescription) { setCheckoutError("Link the patient's scanned prescription before dispensing."); void openRxPicker(); return false; }
+    if (hasNarcotic && !doctor) { setCheckoutError("Narcotic items need the SLMC-registered prescriber linked."); setModal("doctor"); return false; }
+    if (hasHighRisk && !verification) { setCheckoutError(null); setVerifySelf(false); setVerifyUser(""); setVerifyPass(""); setModal("verify"); return false; }
+    return true;
+  }
   const itemCount = items.reduce((s, i) => s + i.quantity, 0);
 
   function handleNumpad(key: string) {
@@ -322,12 +372,17 @@ export function DispensingPage() {
       return;
     }
     setCheckoutError(null);
+    if (!complianceReady()) return;
     setSubmitting(true);
     try {
       const sub = subtotal();
       const invoice = await invoiceService.create({
         customer_id: customer?.id,
         doctor_id: doctor?.id,
+        prescription_id: hasRegulated ? prescription?.id : undefined,
+        pharmacist_verified: verification?.self || undefined,
+        verifier_username: verification && !verification.self ? verification.username : undefined,
+        verifier_password: verification && !verification.self ? verification.password : undefined,
         items: items.map((i) => ({
           drug_id: i.drug.id,
           quantity: i.quantity,
@@ -355,6 +410,8 @@ export function DispensingPage() {
       try { localStorage.setItem(LAST_INVOICE_KEY, String(invoice.id)); } catch { /* ignore */ }
       setLastSale({ number: invoice.invoice_number, change: paidCash - netTotal, receipt });
       clearCart();
+      setPrescription(null);
+      setVerification(null);
       setDrugResults([]);
       setDrugQuery("");
       setCashTendered("");
@@ -553,7 +610,7 @@ export function DispensingPage() {
     printHtml(`<!doctype html><html><head><meta charset="utf-8"><style>
       @page{size:80mm auto;margin:4mm} body{font-family:Consolas,monospace;font-size:11px;width:72mm;margin:0 auto}
       h1{font-size:14px;text-align:center;margin:0} table{width:100%} .r{text-align:right} hr{border:0;border-top:1px dashed #000}
-      </style></head><body><h1>E-Pharmacy</h1><div style="text-align:center">X-REPORT (DAY SUMMARY)</div>
+      </style></head><body><h1>AltusVera</h1><div style="text-align:center">X-REPORT (DAY SUMMARY)</div>
       <div style="text-align:center">${formatDateTime(new Date().toISOString())}${user ? ` · ${user.name}` : ""}</div><hr>
       <table><tr><td>Invoices</td><td class="r">${xr.count}</td></tr><tr><td>Voided</td><td class="r">${xr.voided}</td></tr>
       <tr><td>Gross sales</td><td class="r">${xr.gross.toFixed(2)}</td></tr><tr><td>Discounts</td><td class="r">-${xr.disc.toFixed(2)}</td></tr>
@@ -724,6 +781,17 @@ export function DispensingPage() {
               <span className={styles.ctxValue}>{doctor ? `Dr. ${doctor.name}` : "None (OTC)"}</span>
               {doctor && <span className={styles.ctxX} onClick={(e) => { e.stopPropagation(); setDoctor(null); }}>✕</span>}
             </button>
+            <button className={`${styles.ctxChip} ${prescription ? styles.ctxChipOn : hasRegulated ? styles.ctxChipHeld : ""}`} onClick={() => void openRxPicker()}>
+              <span className={styles.ctxLabel}>Prescription</span>
+              <span className={styles.ctxValue}>{prescription ? `Rx #${prescription.id} · ${formatDate(prescription.issue_date)}` : hasRegulated ? "REQUIRED" : "None"}</span>
+              {prescription && <span className={styles.ctxX} onClick={(e) => { e.stopPropagation(); setPrescription(null); }}>✕</span>}
+            </button>
+            {hasHighRisk && (
+              <button className={`${styles.ctxChip} ${verification ? styles.ctxChipOn : styles.ctxChipHeld}`} onClick={() => setModal("verify")}>
+                <span className={styles.ctxLabel}>Pharmacist check</span>
+                <span className={styles.ctxValue}>{verification ? (verification.self ? `Verified · ${user?.name ?? "you"}` : `Verified · ${verification.username}`) : "REQUIRED"}</span>
+              </button>
+            )}
             {notes && (
               <button className={`${styles.ctxChip} ${styles.ctxChipOn}`} onClick={() => runFn("note")} title={notes}>
                 <span className={styles.ctxLabel}>Note</span>
@@ -1043,7 +1111,7 @@ export function DispensingPage() {
       {/* ══ MODALS ═════════════════════════════════════════════════════════════ */}
 
       {/* Customer search modal */}
-      <Modal open={modal === "customer"} onClose={closeModal} title="Select Patient (optional)" size="sm">
+      <Modal open={modal === "customer"} onClose={closeModal} title={hasRegulated ? "Select Patient (required for POM / High Alert / Narcotic)" : "Select Patient"} size="sm">
         <div className={styles.modalHint}>Leave empty to proceed as walk-in customer.</div>
         <div className={styles.modalSearch}>
           <input
@@ -1070,7 +1138,7 @@ export function DispensingPage() {
       </Modal>
 
       {/* Doctor search modal */}
-      <Modal open={modal === "doctor"} onClose={closeModal} title="Link Prescriber (optional)" size="sm">
+      <Modal open={modal === "doctor"} onClose={closeModal} title={hasNarcotic ? "Link Prescriber (required for narcotics)" : "Link Prescriber"} size="sm">
         <div className={styles.modalHint}>Required only for POM / prescription medicines.</div>
         <div className={styles.modalSearch}>
           <input
@@ -1083,7 +1151,7 @@ export function DispensingPage() {
         </div>
         {doctorResults.map((d) => (
           <div key={d.id} className={styles.entityRow} onClick={() => selectDoctor(d)}>
-            <div className={styles.entityName}>Dr. {d.name}{d.slmc_registration_number && <span className={styles.slmcInline}>SLMC: {d.slmc_registration_number}</span>}</div>
+            <div className={styles.entityName}>Dr. {d.name}{d.slmc_reg_no && <span className={styles.slmcInline}>SLMC: {d.slmc_reg_no}</span>}</div>
             <div className={styles.entitySub}>{[d.specialization, d.hospital].filter(Boolean).join(" · ")}</div>
           </div>
         ))}
@@ -1408,6 +1476,83 @@ export function DispensingPage() {
         <div className={styles.pomMsg}>The current bill has {items.length} line(s) worth {formatCurrency(netTotal)}. Discard it or put it on hold?</div>
       </Modal>
 
+      {/* Prescription picker */}
+      <Modal open={modal === "rx"} onClose={closeModal} title={`Prescriptions — ${customer?.name ?? ""}`} size="md">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {rxList.length === 0 && <div className={styles.pomMsg}>No prescriptions on file for this patient.</div>}
+          {rxList.map((rx) => {
+            const until = rxValidUntil(rx);
+            const expired = until < new Date();
+            const noScan = !rx.scan_file_path;
+            const disabled = expired || noScan;
+            return (
+              <button key={rx.id} disabled={disabled}
+                onClick={() => { setPrescription(rx); setCheckoutError(null); closeModal(); notify(`Prescription #${rx.id} linked`); }}
+                style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${prescription?.id === rx.id ? "#166534" : "#CBD5E1"}`, background: disabled ? "#F1F5F9" : "#fff", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.65 : 1 }}>
+                <div style={{ fontWeight: 800 }}>Rx #{rx.id} · issued {formatDate(rx.issue_date)} · {rx.reproduce_type === "recurrent" ? "Recurrent" : "One time"}</div>
+                <div style={{ fontSize: 12, color: "#334155" }}>
+                  Valid until {formatDate(until.toISOString())}{expired ? " — EXPIRED" : ""}{noScan ? " — NO SCAN (upload in ERP)" : ""}
+                </div>
+                {rx.drug_details_text && <div style={{ fontSize: 12, color: "#5B6B80", marginTop: 2 }}>{rx.drug_details_text.slice(0, 120)}</div>}
+              </button>
+            );
+          })}
+        </div>
+        <div className={styles.pomActions} style={{ marginTop: 12 }}>
+          <Button variant="secondary" onClick={closeModal}>Close</Button>
+          <Button variant="primary" onClick={() => setModal("newRx")}>+ New Prescription (scan)</Button>
+        </div>
+      </Modal>
+
+      {/* New prescription with scan + OCR */}
+      <Modal open={modal === "newRx"} onClose={closeModal} title="New Prescription" size="lg">
+        {customer && (
+          <PrescriptionForm
+            customerId={customer.id}
+            customerName={`${customer.name} · ${customer.contact_number}`}
+            initialDoctor={doctor ? { id: doctor.id, name: doctor.name, slmc_reg_no: doctor.slmc_reg_no, specialization: doctor.specialization } : null}
+            onCancel={() => setModal("rx")}
+            onSaved={(rx) => { setPrescription(rx); setCheckoutError(null); closeModal(); notify(`Prescription #${rx.id} saved and linked`); }}
+          />
+        )}
+      </Modal>
+
+      {/* Pharmacist verification for High Alert / Narcotic */}
+      <Modal open={modal === "verify"} onClose={closeModal} title="Pharmacist Verification Required" size="sm">
+        <div className={styles.pomBody}>
+          <div className={styles.pomIcon}>⚠</div>
+          <div className={styles.pomMsg}>
+            This bill contains <strong>{hasNarcotic ? "Narcotic" : "High Alert"}</strong> medicine:
+            {" "}{items.filter((i) => i.drug.is_high_alert || i.drug.is_narcotic).map((i) => i.drug.brand_name).join(", ")}.
+            The prescription must be validated and confirmed by a pharmacist before issuing.
+          </div>
+        </div>
+        {canSelfVerify && (
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "10px 0", fontWeight: 600, fontSize: 14 }}>
+            <input type="checkbox" checked={verifySelf} onChange={(e) => setVerifySelf(e.target.checked)} />
+            I, {user?.name}, have checked the prescription, dose and patient, and confirm this supply.
+          </label>
+        )}
+        {!verifySelf && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+            <div className={styles.modalHint}>{canSelfVerify ? "Or have another pharmacist confirm:" : "A pharmacist must confirm with their own login:"}</div>
+            <input className={styles.modalSearchInput} placeholder="Pharmacist username" value={verifyUser} onChange={(e) => setVerifyUser(e.target.value)} autoComplete="off" />
+            <input className={styles.modalSearchInput} type="password" placeholder="Pharmacist password" value={verifyPass} onChange={(e) => setVerifyPass(e.target.value)} autoComplete="new-password" />
+          </div>
+        )}
+        <div className={styles.pomActions}>
+          <Button variant="secondary" onClick={closeModal}>Cancel</Button>
+          <Button variant="primary"
+            disabled={!verifySelf && (!verifyUser.trim() || !verifyPass)}
+            onClick={() => {
+              setVerification(verifySelf ? { self: true } : { self: false, username: verifyUser.trim(), password: verifyPass });
+              setVerifyPass("");
+              closeModal();
+              notify("Verification recorded — press Complete Sale", "ok");
+            }}>Confirm</Button>
+        </div>
+      </Modal>
+
       {/* POM advisory modal */}
       <Modal open={!!pomWarningDrug} onClose={() => setPomWarningDrug(null)} title="Prescription-Only Medicine" size="sm">
         <div className={styles.pomBody}>
@@ -1417,12 +1562,12 @@ export function DispensingPage() {
             This is a <strong>Prescription-Only Medicine (POM)</strong>. Dispensing without a valid prescription may be a regulatory offence.
           </div>
           <div className={styles.pomMsg} style={{ marginTop: 4 }}>
-            Link a prescriber (F5) before dispensing, or confirm you have sighted a paper prescription.
+            You can add it now, but the sale will only complete once the patient and their scanned prescription are linked.
           </div>
         </div>
         <div className={styles.pomActions}>
           <Button variant="secondary" onClick={() => { setPomWarningDrug(null); setModal("doctor"); }}>Link Prescriber First</Button>
-          <Button variant="primary" onClick={addPomAnyway}>I Have Sighted Rx — Add Anyway</Button>
+          <Button variant="primary" onClick={addPomAnyway}>Add — I'll link the Rx</Button>
         </div>
       </Modal>
 

@@ -1,157 +1,163 @@
 import { useEffect, useState } from "react";
-import {
-  purchaseInvoiceService,
-  type PurchaseInvoice,
-  type PurchaseInvoiceCreate,
-  type PurchaseInvoiceStatus,
-} from "../../services/purchase_invoice.service";
+import { purchaseInvoiceService, type PurchaseInvoice, type PurchaseInvoiceCreate } from "../../services/purchase_invoice.service";
+import { supplierService } from "../../services/supplier.service";
+import { grnService, type GoodsReceipt } from "../../services/grn.service";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { Table } from "../../components/ui/Table";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import { Table } from "../../components/ui/Table";
-import styles from "./PurchaseInvoices.module.css";
+import { formatCurrency, formatDate } from "../../utils/formatters";
+import { apiError, exportCsv, todayIso } from "../../utils/errors";
+import type { Supplier } from "../../types";
+import s from "../../styles/erp.module.css";
 
-const today = new Date().toISOString().split("T")[0];
-
-type BadgeVariant = "neutral" | "warning" | "success" | "danger";
-const STATUS_BADGE: Record<PurchaseInvoiceStatus, BadgeVariant> = {
-  unpaid: "warning",
-  partially_paid: "warning",
-  paid: "success",
-  overdue: "danger",
-};
-
-const emptyForm: PurchaseInvoiceCreate = {
-  supplier_id: 0,
-  invoice_date: today,
-  subtotal: 0,
-  total_amount: 0,
-};
+const emptyForm = (): PurchaseInvoiceCreate => ({ invoice_number: "", supplier_id: 0, goods_receipt_id: null, invoice_date: todayIso(), total_amount: 0, notes: "" });
 
 export function PurchaseInvoicesPage() {
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [grns, setGrns] = useState<GoodsReceipt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<PurchaseInvoiceStatus | "all">("all");
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [payModal, setPayModal] = useState(false);
-  const [payTarget, setPayTarget] = useState<PurchaseInvoice | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-  const [form, setForm] = useState<PurchaseInvoiceCreate>(emptyForm);
+  const [form, setForm] = useState<PurchaseInvoiceCreate>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
-    try { setInvoices(await purchaseInvoiceService.getAll()); }
-    finally { setLoading(false); }
+    try {
+      const [inv, sup, g] = await Promise.all([
+        purchaseInvoiceService.getAll(),
+        supplierService.getAll(),
+        grnService.getAll().catch(() => [] as GoodsReceipt[]),
+      ]);
+      setInvoices(inv); setSuppliers(sup); setGrns(g);
+    } finally { setLoading(false); }
   }
 
-  function openNew() { setForm(emptyForm); setModalOpen(true); }
+  const supName = (i: PurchaseInvoice) => i.supplier?.name ?? suppliers.find((x) => x.id === i.supplier_id)?.name ?? `#${i.supplier_id}`;
+
+  /** Choosing a GRN fills the supplier and the total from the received lines. */
+  function pickGrn(id: number) {
+    const g = grns.find((x) => x.id === id);
+    if (!g) { setForm((p) => ({ ...p, goods_receipt_id: null })); return; }
+    const total = g.items.reduce((a, i) => a + (i.is_free_goods ? 0 : i.quantity_received * i.unit_cost), 0);
+    setForm((p) => ({ ...p, goods_receipt_id: g.id, supplier_id: g.supplier_id, total_amount: Math.round(total * 100) / 100 }));
+  }
 
   async function save() {
-    if (!form.supplier_id || !form.total_amount) return;
-    setSaving(true);
+    if (!form.invoice_number.trim()) { setError("Enter the supplier's invoice number."); return; }
+    if (!form.supplier_id) { setError("Select a supplier."); return; }
+    if (form.total_amount <= 0) { setError("Total amount must be above zero."); return; }
+    setSaving(true); setError("");
     try {
       await purchaseInvoiceService.create(form);
       setModalOpen(false);
-      load();
-    } finally { setSaving(false); }
+      await load();
+    } catch (e) { setError(apiError(e)); }
+    finally { setSaving(false); }
   }
 
-  async function recordPayment() {
-    if (!payTarget || !payAmount) return;
-    setSaving(true);
+  async function markPaid(i: PurchaseInvoice) {
+    if (!confirm(`Mark ${i.invoice_number} (${formatCurrency(i.total_amount)}) as paid?`)) return;
+    setError("");
     try {
-      const newPaid = Number(payTarget.paid_amount) + parseFloat(payAmount);
-      await purchaseInvoiceService.recordPayment(payTarget.id, newPaid);
-      setPayModal(false);
-      load();
-    } finally { setSaving(false); }
+      const u = await purchaseInvoiceService.markPaid(i.id);
+      setInvoices((p) => p.map((x) => (x.id === i.id ? { ...x, is_paid: u.is_paid, paid_at: u.paid_at } : x)));
+    } catch (e) { setError(apiError(e)); }
   }
 
-  const filtered = invoices.filter(inv => statusFilter === "all" || inv.status === statusFilter);
-  const totalUnpaid = invoices.filter(i => i.status !== "paid").reduce((s, i) => s + Number(i.total_amount) - Number(i.paid_amount), 0);
+  const ageDays = (i: PurchaseInvoice) => Math.floor((Date.now() - new Date(i.invoice_date).getTime()) / 86400000);
+
+  const filtered = invoices.filter((i) => {
+    if (filter === "unpaid" && i.is_paid) return false;
+    if (filter === "paid" && !i.is_paid) return false;
+    if (filter === "overdue" && (i.is_paid || ageDays(i) <= 30)) return false;
+    const t = q.trim().toLowerCase();
+    return !t || i.invoice_number.toLowerCase().includes(t) || supName(i).toLowerCase().includes(t);
+  });
+
+  const unpaid = invoices.filter((i) => !i.is_paid);
+  const overdue = unpaid.filter((i) => ageDays(i) > 30);
 
   return (
-    <div className={styles.page}>
-      <div className={styles.statsBar}>
-        <div className={styles.statCard}><div className={styles.statValue}>{invoices.length}</div><div className={styles.statLabel}>Total Invoices</div></div>
-        <div className={styles.statCard}><div className={`${styles.statValue} ${styles.warn}`}>{invoices.filter(i => i.status === "unpaid").length}</div><div className={styles.statLabel}>Unpaid</div></div>
-        <div className={styles.statCard}><div className={`${styles.statValue} ${styles.danger}`}>{invoices.filter(i => i.status === "overdue").length}</div><div className={styles.statLabel}>Overdue</div></div>
-        <div className={styles.statCard}><div className={`${styles.statValue} ${styles.warn}`}>LKR {totalUnpaid.toLocaleString("en-LK", { minimumFractionDigits: 2 })}</div><div className={styles.statLabel}>Outstanding Amount</div></div>
+    <div className={s.page}>
+      <div className={s.stats}>
+        <div className={s.stat}><div className={s.statLabel}>Invoices</div><div className={s.statValue}>{invoices.length}</div></div>
+        <div className={`${s.stat} ${s.statWarn}`}><div className={s.statLabel}>Payable (Unpaid)</div><div className={s.statValue}>{formatCurrency(unpaid.reduce((a, i) => a + i.total_amount, 0))}</div></div>
+        <div className={`${s.stat} ${s.statDanger}`}><div className={s.statLabel}>Overdue &gt; 30 days</div><div className={s.statValue}>{overdue.length}</div></div>
+        <div className={s.stat}><div className={s.statLabel}>Paid</div><div className={s.statValue}>{invoices.length - unpaid.length}</div></div>
       </div>
 
-      <div className={styles.toolbar}>
-        <div className={styles.filterTabs}>
-          {(["all", "unpaid", "partially_paid", "paid", "overdue"] as const).map(s => (
-            <button key={s} className={`${styles.filterTab} ${statusFilter === s ? styles.filterTabActive : ""}`} onClick={() => setStatusFilter(s)}>
-              {s.replace("_", " ").replace(/^\w/, c => c.toUpperCase())}
-            </button>
-          ))}
-        </div>
-        <Button variant="primary" onClick={openNew}>+ New Invoice</Button>
+      <div className={s.toolbar}>
+        <input className={s.search} placeholder="Search invoice # or supplier…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className={s.select} style={{ width: 170 }} value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <option value="all">All</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="overdue">Overdue</option>
+          <option value="paid">Paid</option>
+        </select>
+        <div className={s.spacer} />
+        <Button
+          variant="secondary"
+          onClick={() => exportCsv("purchase-invoices.csv", [
+            ["Invoice #", "Supplier", "Date", "Amount", "Paid", "Paid At"],
+            ...filtered.map((i) => [i.invoice_number, supName(i), i.invoice_date, i.total_amount.toFixed(2), i.is_paid ? "Yes" : "No", i.paid_at]),
+          ])}
+        >Export CSV</Button>
+        <Button onClick={() => { setForm(emptyForm()); setError(""); setModalOpen(true); }}>+ New Invoice</Button>
       </div>
+      {error && !modalOpen && <div className={s.error}>{error}</div>}
 
       <Table<PurchaseInvoice>
         columns={[
-          { key: "invoice_number", header: "Invoice #", render: inv => <code style={{ fontSize: "var(--font-size-sm)" }}>{inv.invoice_number}</code> },
-          { key: "supplier", header: "Supplier", render: inv => <span>#{inv.supplier_id}</span> },
-          { key: "date", header: "Date", render: inv => <span>{inv.invoice_date}</span> },
-          { key: "due_date", header: "Due Date", render: inv => inv.due_date ? <span>{inv.due_date}</span> : <span style={{ color: "var(--color-text-muted)" }}>—</span> },
-          { key: "total", header: "Total", render: inv => <span style={{ textAlign: "right", display: "block" }}>{Number(inv.total_amount).toFixed(2)}</span> },
-          { key: "paid", header: "Paid", render: inv => <span style={{ textAlign: "right", display: "block", color: Number(inv.paid_amount) > 0 ? "var(--color-success)" : "var(--color-text-muted)" }}>{Number(inv.paid_amount).toFixed(2)}</span> },
-          { key: "status", header: "Status", render: inv => <Badge variant={STATUS_BADGE[inv.status]}>{inv.status.replace("_", " ")}</Badge> },
-          { key: "actions", header: "", render: inv => inv.status !== "paid" ? (
-            <Button size="sm" variant="ghost" onClick={() => { setPayTarget(inv); setPayAmount(""); setPayModal(true); }}>
-              Record Payment
-            </Button>
-          ) : null },
+          { key: "invoice_number", header: "Invoice #", render: (i) => <span className={s.strong}>{i.invoice_number}</span> },
+          { key: "supplier", header: "Supplier", render: (i) => supName(i) },
+          { key: "grn", header: "GRN", render: (i) => (i.goods_receipt_id ? grns.find((g) => g.id === i.goods_receipt_id)?.grn_number ?? `#${i.goods_receipt_id}` : "—") },
+          { key: "invoice_date", header: "Date", render: (i) => formatDate(i.invoice_date) },
+          { key: "age", header: "Age", render: (i) => (i.is_paid ? "—" : `${ageDays(i)} d`) },
+          { key: "total_amount", header: "Amount", render: (i) => formatCurrency(i.total_amount) },
+          { key: "status", header: "Status", render: (i) => i.is_paid ? <Badge variant="success">Paid</Badge> : ageDays(i) > 30 ? <Badge variant="danger">Overdue</Badge> : <Badge variant="warning">Unpaid</Badge> },
+          { key: "actions", header: "", render: (i) => (!i.is_paid ? <Button size="sm" onClick={() => markPaid(i)}>Mark Paid</Button> : <span className={s.muted}>{i.paid_at ? formatDate(i.paid_at) : ""}</span>) },
         ]}
         data={filtered}
-        rowKey={inv => inv.id}
-        emptyMessage={loading ? "Loading…" : "No invoices found."}
+        rowKey={(i) => i.id}
+        emptyMessage={loading ? "Loading…" : "No purchase invoices found."}
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Purchase Invoice">
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
-            <Input label="Supplier ID *" type="number" value={form.supplier_id || ""} onChange={e => setForm(f => ({ ...f, supplier_id: parseInt(e.target.value) || 0 }))} />
-            <Input label="Invoice Date *" type="date" value={form.invoice_date} onChange={e => setForm(f => ({ ...f, invoice_date: e.target.value }))} />
-            <Input label="Due Date" type="date" value={form.due_date ?? ""} onChange={e => setForm(f => ({ ...f, due_date: e.target.value || undefined }))} />
-            <Input label="Link to PO ID" type="number" value={form.purchase_order_id ?? ""} onChange={e => setForm(f => ({ ...f, purchase_order_id: parseInt(e.target.value) || undefined }))} placeholder="Optional" />
-            <Input label="Link to GRN ID" type="number" value={form.grn_id ?? ""} onChange={e => setForm(f => ({ ...f, grn_id: parseInt(e.target.value) || undefined }))} placeholder="Optional" />
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="New Purchase Invoice"
+        size="lg"
+        footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button loading={saving} onClick={save}>Save Invoice</Button></>}
+      >
+        {error && <div className={s.error}>{error}</div>}
+        <div className={s.formGrid}>
+          <div className={`${s.field} ${s.full}`}>
+            <span className={s.fieldLabel}>Against GRN (optional — fills supplier and amount)</span>
+            <select className={s.select} value={form.goods_receipt_id ?? 0} onChange={(e) => pickGrn(Number(e.target.value))}>
+              <option value={0}>— None —</option>
+              {grns.map((g) => <option key={g.id} value={g.id}>{g.grn_number} · {suppliers.find((x) => x.id === g.supplier_id)?.name ?? ""} · {formatDate(g.received_date)}</option>)}
+            </select>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--space-3)" }}>
-            <Input label="Subtotal *" type="number" step="0.01" value={form.subtotal || ""} onChange={e => setForm(f => ({ ...f, subtotal: parseFloat(e.target.value) || 0 }))} />
-            <Input label="Tax Amount" type="number" step="0.01" value={form.tax_amount ?? 0} onChange={e => setForm(f => ({ ...f, tax_amount: parseFloat(e.target.value) || 0 }))} />
-            <Input label="Discount" type="number" step="0.01" value={form.discount_amount ?? 0} onChange={e => setForm(f => ({ ...f, discount_amount: parseFloat(e.target.value) || 0 }))} />
+          <Input label="Supplier Invoice # *" value={form.invoice_number} onChange={(e) => setForm((p) => ({ ...p, invoice_number: e.target.value }))} />
+          <div className={s.field}>
+            <span className={s.fieldLabel}>Supplier *</span>
+            <select className={s.select} value={form.supplier_id} onChange={(e) => setForm((p) => ({ ...p, supplier_id: Number(e.target.value) }))}>
+              <option value={0}>— Select supplier —</option>
+              {suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
           </div>
-          <Input label="Total Amount *" type="number" step="0.01" value={form.total_amount || ""} onChange={e => setForm(f => ({ ...f, total_amount: parseFloat(e.target.value) || 0 }))} />
-          <Input label="Notes" value={form.notes ?? ""} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-3)" }}>
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={save} disabled={saving || !form.supplier_id || !form.total_amount}>{saving ? "Saving…" : "Save Invoice"}</Button>
-          </div>
+          <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={(e) => setForm((p) => ({ ...p, invoice_date: e.target.value }))} />
+          <Input label="Total Amount (Rs.) *" type="number" min={0} step={0.01} value={form.total_amount} onChange={(e) => setForm((p) => ({ ...p, total_amount: parseFloat(e.target.value) || 0 }))} />
+          <div className={s.full}><Input label="Notes" value={form.notes ?? ""} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></div>
         </div>
-      </Modal>
-
-      <Modal open={payModal} onClose={() => setPayModal(false)} title={`Record Payment — ${payTarget?.invoice_number}`}>
-        {payTarget && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)", fontSize: "var(--font-size-sm)" }}>
-              <div>Total: <strong>LKR {Number(payTarget.total_amount).toFixed(2)}</strong></div>
-              <div>Already Paid: <strong>LKR {Number(payTarget.paid_amount).toFixed(2)}</strong></div>
-              <div>Outstanding: <strong style={{ color: "var(--color-danger)" }}>LKR {(Number(payTarget.total_amount) - Number(payTarget.paid_amount)).toFixed(2)}</strong></div>
-            </div>
-            <Input label="Payment Amount *" type="number" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder="Amount being paid now" />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-3)" }}>
-              <Button variant="ghost" onClick={() => setPayModal(false)}>Cancel</Button>
-              <Button variant="primary" onClick={recordPayment} disabled={saving || !payAmount}>{saving ? "Saving…" : "Record Payment"}</Button>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   );

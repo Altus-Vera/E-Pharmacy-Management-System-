@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -12,6 +13,18 @@ namespace AltuVera.Pharmacy.API.Controllers;
 [Authorize]
 public class PrescriptionController(AppDbContext db, IWebHostEnvironment env) : ControllerBase
 {
+    [Authorize(Roles = R.Pos)]
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] PrescriptionUpdateRequest req)
+    {
+        var rx = await db.Prescriptions.FindAsync(id);
+        if (rx is null) return NotFound();
+        if (req.IsActive is not null) rx.IsActive = req.IsActive.Value;
+        rx.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(rx);
+    }
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int? customerId)
     {
@@ -27,6 +40,7 @@ public class PrescriptionController(AppDbContext db, IWebHostEnvironment env) : 
         return p is null ? NotFound() : Ok(p);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] PrescriptionRequest req)
     {
@@ -47,6 +61,7 @@ public class PrescriptionController(AppDbContext db, IWebHostEnvironment env) : 
         return Ok(prescription);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost("{id:int}/scan")]
     public async Task<IActionResult> UploadScan(int id, IFormFile file)
     {
@@ -70,3 +85,5 @@ public class PrescriptionController(AppDbContext db, IWebHostEnvironment env) : 
 
 public record PrescriptionRequest(int CustomerId, int? DoctorId, DateOnly IssueDate, string? DrugDetailsText,
     string ReproduceType, int? ValidDays, int? ValidMonths);
+
+public record PrescriptionUpdateRequest(bool? IsActive);

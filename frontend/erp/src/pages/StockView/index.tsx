@@ -42,7 +42,7 @@ export function StockViewPage() {
     if (!adjDrug || !adjChange) return;
     setAdjSaving(true);
     try {
-      await stockService.adjust(adjDrug.id, parseInt(adjChange), adjNotes || undefined);
+      await stockService.adjust(adjDrug.id, parseInt(adjChange), adjNotes);
       setAdjModal(false);
       load();
     } finally { setAdjSaving(false); }

@@ -8,7 +8,7 @@ export const prescriptionService = {
   },
 
   async getByCustomer(customerId: number): Promise<Prescription[]> {
-    const res = await api.get<Prescription[]>(`/prescriptions/customer/${customerId}`);
+    const res = await api.get<Prescription[]>("/prescriptions", { params: { customerId } });
     return res.data;
   },
 

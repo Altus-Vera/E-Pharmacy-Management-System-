@@ -1,7 +1,7 @@
 {
   "name": "altuvera-pharmacy-pos",
   "version": "1.0.0",
-  "description": "AltuVera Pharmacy POS Desktop App",
+  "description": "AltusVera Pharmacy POS Desktop App",
   "main": "main.js",
   "scripts": {
     "electron": "electron .",
@@ -11,7 +11,7 @@
   },
   "build": {
     "appId": "com.altuvera.pharmacy.pos",
-    "productName": "AltuVera Pharmacy POS",
+    "productName": "AltusVera Pharmacy POS",
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"

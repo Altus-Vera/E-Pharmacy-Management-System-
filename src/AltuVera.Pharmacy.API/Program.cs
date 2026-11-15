@@ -26,7 +26,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers()
+builder.Services.AddScoped<AltuVera.Pharmacy.API.Security.AuditFilter>();
+builder.Services.AddControllers(o => o.Filters.AddService<AltuVera.Pharmacy.API.Security.AuditFilter>())
     .AddJsonOptions(o => {
         o.JsonSerializerOptions.ReferenceHandler =
             System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;

@@ -18,7 +18,7 @@ public class PurchaseOrder
 
     public Supplier Supplier { get; set; } = null!;
     public ICollection<PurchaseOrderItem> Items { get; set; } = [];
-    public ICollection<GoodsReceipt> GoodsReceipts { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<GoodsReceipt> GoodsReceipts { get; set; } = [];
 }
 
 public class PurchaseOrderItem

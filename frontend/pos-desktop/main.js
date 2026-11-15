@@ -18,7 +18,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 600,
-    title: 'AltuVera Pharmacy POS',
+    title: 'AltusVera Pharmacy POS',
     icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

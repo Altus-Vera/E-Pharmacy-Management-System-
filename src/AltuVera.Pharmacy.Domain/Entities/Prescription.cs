@@ -19,5 +19,5 @@ public class Prescription
 
     public Customer Customer { get; set; } = null!;
     public Doctor? Doctor { get; set; }
-    public ICollection<Invoice> Invoices { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<Invoice> Invoices { get; set; } = [];
 }

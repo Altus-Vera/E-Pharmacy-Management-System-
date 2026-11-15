@@ -183,6 +183,23 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("GETUTCDATE()");
 
+                    b.Property<decimal>("DiscountRate")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("discount_rate");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Hospital")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("hospital");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit")
                         .HasColumnName("is_active");
@@ -192,6 +209,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)")
                         .HasColumnName("name");
+
+                    b.Property<string>("SlmcRegNo")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("slmc_reg_no");
 
                     b.Property<string>("Specialization")
                         .HasMaxLength(100)
@@ -205,6 +227,8 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SlmcRegNo");
 
                     b.ToTable("doctors", (string)null);
                 });
@@ -528,6 +552,12 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("invoice_number");
 
+                    b.Property<int>("LoyaltyPointsEarned")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("loyalty_points_earned");
+
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("notes");
@@ -577,6 +607,10 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("updated_at")
                         .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int?>("VerifiedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("verified_by_user_id");
 
                     b.HasKey("Id");
 

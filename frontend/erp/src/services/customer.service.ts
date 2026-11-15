@@ -8,7 +8,7 @@ export const customerService = {
   },
 
   async search(q: string): Promise<Customer[]> {
-    const res = await api.get<Customer[]>("/customers/search", { params: { q } });
+    const res = await api.get<Customer[]>("/customers", { params: { search: q } });
     return res.data;
   },
 
@@ -28,7 +28,7 @@ export const customerService = {
   },
 
   async getInvoices(customerId: number): Promise<CustomerInvoiceSummary[]> {
-    const res = await api.get<CustomerInvoiceSummary[]>(`/invoices/customer/${customerId}`);
+    const res = await api.get<CustomerInvoiceSummary[]>("/invoices", { params: { customerId } });
     return res.data;
   },
 };

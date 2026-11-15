@@ -15,7 +15,7 @@ export function Header() {
   return (
     <header className={styles.header}>
       <div>
-        <span className={styles.brand}>E-Pharmacy</span>
+        <span className={styles.brand}>AltusVera</span>
         <span className={styles.brandSub}>ERP</span>
       </div>
       <div className={styles.right}>

@@ -1,39 +1,27 @@
 import { useEffect, useState } from "react";
-import {
-  purchaseRequisitionService,
-  type PurchaseRequisition,
-  type RequisitionCreate,
-  type RequisitionItemCreate,
-  type RequisitionStatus,
-} from "../../services/purchase_requisition.service";
+import { purchaseRequisitionService, type PurchaseRequisition, type RequisitionLine } from "../../services/purchase_requisition.service";
+import { drugService } from "../../services/drug.service";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { Table } from "../../components/ui/Table";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import { Table } from "../../components/ui/Table";
-import styles from "./PurchaseRequisitions.module.css";
+import { DrugPicker } from "../../components/ui/DrugPicker";
+import { formatDate } from "../../utils/formatters";
+import { apiError, exportCsv } from "../../utils/errors";
+import s from "../../styles/erp.module.css";
 
-const today = new Date().toISOString().split("T")[0];
-
-type BadgeVariant = "neutral" | "warning" | "success" | "danger";
-const STATUS_BADGE: Record<RequisitionStatus, BadgeVariant> = {
-  draft: "neutral",
-  submitted: "warning",
-  approved: "success",
-  rejected: "danger",
-  ordered: "success",
-};
+const emptyLine = (): RequisitionLine => ({ drug_id: 0, quantity_requested: 1, notes: "" });
 
 export function PurchaseRequisitionsPage() {
   const [reqs, setReqs] = useState<PurchaseRequisition[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<RequisitionStatus | "all">("all");
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [detailReq, setDetailReq] = useState<PurchaseRequisition | null>(null);
+  const [lines, setLines] = useState<RequisitionLine[]>([emptyLine()]);
   const [saving, setSaving] = useState(false);
-
-  const [form, setForm] = useState<Omit<RequisitionCreate, "items">>({ request_date: today, notes: "" });
-  const [items, setItems] = useState<RequisitionItemCreate[]>([{ drug_id: 0, quantity_needed: 1 }]);
+  const [error, setError] = useState("");
 
   useEffect(() => { load(); }, []);
 
@@ -43,128 +31,112 @@ export function PurchaseRequisitionsPage() {
     finally { setLoading(false); }
   }
 
-  function openNew() {
-    setForm({ request_date: today, notes: "" });
-    setItems([{ drug_id: 0, quantity_needed: 1 }]);
-    setModalOpen(true);
+  function openNew() { setLines([emptyLine()]); setError(""); setModalOpen(true); }
+
+  /** Pre-fill a requisition with every drug at or below its low-stock level. */
+  async function fromLowStock() {
+    setError("");
+    try {
+      const low = await drugService.getLowStock();
+      if (!low.length) { setError("No drugs are below their low-stock level."); return; }
+      setLines(low.map((d) => ({ drug_id: d.id, quantity_requested: Math.max((d.reorder_level || d.low_stock_threshold) * 2 - d.quantity, 1), notes: "Auto: low stock" })));
+      setModalOpen(true);
+    } catch (e) { setError(apiError(e)); }
   }
 
-  function addItem() { setItems(prev => [...prev, { drug_id: 0, quantity_needed: 1 }]); }
-  function removeItem(idx: number) { setItems(prev => prev.filter((_, i) => i !== idx)); }
-  function updateItem(idx: number, field: keyof RequisitionItemCreate, value: string | number) {
-    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
-  }
+  const update = (idx: number, patch: Partial<RequisitionLine>) =>
+    setLines((p) => p.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
 
   async function save() {
-    setSaving(true);
+    if (lines.some((l) => !l.drug_id || l.quantity_requested <= 0)) { setError("Every line needs a drug and a quantity above zero."); return; }
+    setSaving(true); setError("");
     try {
-      await purchaseRequisitionService.create({ ...form, items });
+      await purchaseRequisitionService.createMany(lines);
       setModalOpen(false);
-      load();
-    } finally { setSaving(false); }
+      await load();
+    } catch (e) { setError(apiError(e)); }
+    finally { setSaving(false); }
   }
 
-  async function changeStatus(req: PurchaseRequisition, status: RequisitionStatus) {
-    await purchaseRequisitionService.updateStatus(req.id, status);
-    load();
+  async function approve(r: PurchaseRequisition) {
+    setError("");
+    try {
+      const u = await purchaseRequisitionService.approve(r.id);
+      setReqs((p) => p.map((x) => (x.id === r.id ? { ...x, status: u.status, approved_at: u.approved_at } : x)));
+    } catch (e) { setError(apiError(e)); }
   }
 
-  const filtered = reqs.filter(r => statusFilter === "all" || r.status === statusFilter);
-  const counts: Record<string, number> = { all: reqs.length };
-  for (const r of reqs) counts[r.status] = (counts[r.status] || 0) + 1;
+  const filtered = reqs.filter((r) => {
+    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    const t = q.trim().toLowerCase();
+    return !t || r.requisition_number.toLowerCase().includes(t) || (r.drug?.brand_name ?? "").toLowerCase().includes(t);
+  });
+
+  const pending = reqs.filter((r) => r.status !== "approved").length;
 
   return (
-    <div className={styles.page}>
-      <div className={styles.statsBar}>
-        <div className={styles.statCard}><div className={styles.statValue}>{reqs.length}</div><div className={styles.statLabel}>Total Requisitions</div></div>
-        <div className={styles.statCard}><div className={styles.statValue}>{counts.submitted || 0}</div><div className={styles.statLabel}>Pending Approval</div></div>
-        <div className={styles.statCard}><div className={styles.statValue}>{counts.approved || 0}</div><div className={styles.statLabel}>Approved</div></div>
-        <div className={styles.statCard}><div className={styles.statValue}>{counts.ordered || 0}</div><div className={styles.statLabel}>Ordered</div></div>
+    <div className={s.page}>
+      <div className={s.stats}>
+        <div className={s.stat}><div className={s.statLabel}>Requisitions</div><div className={s.statValue}>{reqs.length}</div></div>
+        <div className={`${s.stat} ${s.statWarn}`}><div className={s.statLabel}>Awaiting Approval</div><div className={s.statValue}>{pending}</div></div>
+        <div className={s.stat}><div className={s.statLabel}>Approved</div><div className={s.statValue}>{reqs.length - pending}</div></div>
       </div>
 
-      <div className={styles.toolbar}>
-        <div className={styles.filterTabs}>
-          {(["all", "draft", "submitted", "approved", "rejected", "ordered"] as const).map(s => (
-            <button key={s} className={`${styles.filterTab} ${statusFilter === s ? styles.filterTabActive : ""}`} onClick={() => setStatusFilter(s)}>
-              {s.charAt(0).toUpperCase() + s.slice(1)} {s !== "all" && counts[s] ? `(${counts[s]})` : ""}
-            </button>
-          ))}
-        </div>
-        <Button variant="primary" onClick={openNew}>+ New Requisition</Button>
+      <div className={s.toolbar}>
+        <input className={s.search} placeholder="Search number or drug…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className={s.select} style={{ width: 170 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+        </select>
+        <div className={s.spacer} />
+        <Button
+          variant="secondary"
+          onClick={() => exportCsv("requisitions.csv", [
+            ["Number", "Drug", "Qty", "Status", "Created", "Notes"],
+            ...filtered.map((r) => [r.requisition_number, r.drug?.brand_name ?? r.drug_id, r.quantity_requested, r.status, r.created_at, r.notes]),
+          ])}
+        >Export CSV</Button>
+        <Button variant="secondary" onClick={fromLowStock}>Auto from Low Stock</Button>
+        <Button onClick={openNew}>+ New Requisition</Button>
       </div>
+      {error && !modalOpen && <div className={s.error}>{error}</div>}
 
       <Table<PurchaseRequisition>
         columns={[
-          { key: "req_number", header: "REQ #", render: r => <code style={{ fontSize: "var(--font-size-sm)" }}>{r.req_number}</code> },
-          { key: "date", header: "Date", render: r => <span>{r.request_date}</span> },
-          { key: "required_by", header: "Required By", render: r => r.required_by_date ? <span>{r.required_by_date}</span> : <span style={{ color: "var(--color-text-muted)" }}>—</span> },
-          { key: "status", header: "Status", render: r => <Badge variant={STATUS_BADGE[r.status]}>{r.status}</Badge> },
-          { key: "items_count", header: "Items", render: r => <span>{r.items.length}</span> },
-          { key: "actions", header: "", render: r => (
-            <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              <Button size="sm" variant="ghost" onClick={() => setDetailReq(r)}>View</Button>
-              {r.status === "draft" && <Button size="sm" variant="ghost" onClick={() => changeStatus(r, "submitted")}>Submit</Button>}
-              {r.status === "submitted" && <>
-                <Button size="sm" variant="ghost" onClick={() => changeStatus(r, "approved")}>Approve</Button>
-                <Button size="sm" variant="ghost" onClick={() => changeStatus(r, "rejected")}>Reject</Button>
-              </>}
-            </div>
-          )},
+          { key: "requisition_number", header: "Number", render: (r) => <span className={s.strong}>{r.requisition_number}</span> },
+          { key: "drug", header: "Drug", render: (r) => r.drug ? <>{r.drug.brand_name} <span className={s.muted}>{r.drug.item_code}</span></> : `#${r.drug_id}` },
+          { key: "stock", header: "Current Stock", render: (r) => r.drug?.quantity ?? "—" },
+          { key: "quantity_requested", header: "Qty Requested" },
+          { key: "status", header: "Status", render: (r) => <Badge variant={r.status === "approved" ? "success" : "warning"}>{r.status === "approved" ? "Approved" : "Pending"}</Badge> },
+          { key: "created_at", header: "Requested", render: (r) => formatDate(r.created_at) },
+          { key: "notes", header: "Notes", render: (r) => <span className={s.muted}>{r.notes || "—"}</span> },
+          { key: "actions", header: "", render: (r) => r.status !== "approved" ? <Button size="sm" onClick={() => approve(r)}>Approve</Button> : null },
         ]}
         data={filtered}
-        rowKey={r => r.id}
+        rowKey={(r) => r.id}
         emptyMessage={loading ? "Loading…" : "No requisitions found."}
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Purchase Requisition">
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
-            <Input label="Request Date *" type="date" value={form.request_date} onChange={e => setForm(f => ({ ...f, request_date: e.target.value }))} />
-            <Input label="Required By" type="date" value={form.required_by_date ?? ""} onChange={e => setForm(f => ({ ...f, required_by_date: e.target.value || undefined }))} />
-          </div>
-          <Input label="Notes" value={form.notes ?? ""} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Reason for requisition" />
-
-          <div className={styles.itemsSection}>
-            <div className={styles.itemsHeader}>
-              <span>Drugs Needed</span>
-              <Button size="sm" variant="ghost" onClick={addItem}>+ Add Drug</Button>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="New Purchase Requisition"
+        size="lg"
+        footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button loading={saving} onClick={save}>Submit {lines.length} line(s)</Button></>}
+      >
+        {error && <div className={s.error}>{error}</div>}
+        <div className={s.lines} style={{ marginTop: 0 }}>
+          {lines.map((l, idx) => (
+            <div key={idx} className={s.line}>
+              <DrugPicker label={idx === 0 ? "Drug" : undefined} value={l.drug_id} onChange={(d) => update(idx, { drug_id: d?.id ?? 0 })} />
+              <Input label={idx === 0 ? "Qty" : ""} type="number" min={1} value={l.quantity_requested} onChange={(e) => update(idx, { quantity_requested: parseInt(e.target.value) || 0 })} />
+              <Input label={idx === 0 ? "Note" : ""} value={l.notes ?? ""} onChange={(e) => update(idx, { notes: e.target.value })} />
+              <button className={s.removeBtn} onClick={() => setLines((p) => p.filter((_, i) => i !== idx))} disabled={lines.length === 1}>✕</button>
             </div>
-            {items.map((item, idx) => (
-              <div key={idx} className={styles.itemRow}>
-                <Input label="Drug ID" type="number" value={item.drug_id || ""} onChange={e => updateItem(idx, "drug_id", parseInt(e.target.value) || 0)} placeholder="Drug ID" />
-                <Input label="Qty Needed" type="number" value={item.quantity_needed} onChange={e => updateItem(idx, "quantity_needed", parseInt(e.target.value) || 1)} />
-                <Input label="Notes" value={item.notes ?? ""} onChange={e => updateItem(idx, "notes", e.target.value)} placeholder="Optional" />
-                {items.length > 1 && <button className={styles.removeBtn} onClick={() => removeItem(idx)}>✕</button>}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-3)" }}>
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={save} disabled={saving || items.some(i => !i.drug_id)}>{saving ? "Saving…" : "Create Requisition"}</Button>
-          </div>
+          ))}
+          <div><Button variant="secondary" size="sm" onClick={() => setLines((p) => [...p, emptyLine()])}>+ Add Line</Button></div>
         </div>
-      </Modal>
-
-      <Modal open={!!detailReq} onClose={() => setDetailReq(null)} title={`Requisition — ${detailReq?.req_number}`}>
-        {detailReq && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)", fontSize: "var(--font-size-sm)" }}>
-              <div><span style={{ color: "var(--color-text-muted)" }}>Status:</span> <Badge variant={STATUS_BADGE[detailReq.status]}>{detailReq.status}</Badge></div>
-              <div><span style={{ color: "var(--color-text-muted)" }}>Date:</span> {detailReq.request_date}</div>
-              {detailReq.required_by_date && <div><span style={{ color: "var(--color-text-muted)" }}>Required by:</span> {detailReq.required_by_date}</div>}
-              {detailReq.notes && <div style={{ gridColumn: "span 2" }}><span style={{ color: "var(--color-text-muted)" }}>Notes:</span> {detailReq.notes}</div>}
-            </div>
-            <table className={styles.detailTable}>
-              <thead><tr><th>Drug ID</th><th>Qty Needed</th><th>Notes</th></tr></thead>
-              <tbody>
-                {detailReq.items.map(it => (
-                  <tr key={it.id}><td>#{it.drug_id}</td><td>{it.quantity_needed}</td><td style={{ color: "var(--color-text-muted)" }}>{it.notes || "—"}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </Modal>
     </div>
   );

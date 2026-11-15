@@ -141,6 +141,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Name).HasColumnName("name").HasMaxLength(150).IsRequired();
             e.Property(x => x.Specialization).HasColumnName("specialization").HasMaxLength(100);
+            e.Property(x => x.SlmcRegNo).HasColumnName("slmc_reg_no").HasMaxLength(30);
+            e.Property(x => x.Email).HasColumnName("email").HasMaxLength(150);
+            e.Property(x => x.Hospital).HasColumnName("hospital").HasMaxLength(150);
+            e.Property(x => x.DiscountRate).HasColumnName("discount_rate").HasPrecision(5, 2).HasDefaultValue(0m);
+            e.HasIndex(x => x.SlmcRegNo);
             e.Property(x => x.ContactNumber).HasColumnName("contact_number").HasMaxLength(20);
             e.Property(x => x.Address).HasColumnName("address");
             e.Property(x => x.IsActive).HasColumnName("is_active");
@@ -205,6 +210,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.CancelledAt).HasColumnName("cancelled_at");
             e.Property(x => x.CancellationReason).HasColumnName("cancellation_reason");
             e.Property(x => x.ServedByUserId).HasColumnName("served_by_user_id");
+            e.Property(x => x.VerifiedByUserId).HasColumnName("verified_by_user_id");
+            e.Property(x => x.LoyaltyPointsEarned).HasColumnName("loyalty_points_earned").HasDefaultValue(0);
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETUTCDATE()");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("GETUTCDATE()");
             e.HasIndex(x => x.InvoiceNumber).IsUnique();

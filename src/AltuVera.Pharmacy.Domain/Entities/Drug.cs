@@ -34,8 +34,8 @@ public class Drug
 
     public DrugCategory? Category { get; set; }
     public Supplier? Supplier { get; set; }
-    public ICollection<PriceAdjustment> PriceAdjustments { get; set; } = [];
-    public ICollection<StockMovement> StockMovements { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<PriceAdjustment> PriceAdjustments { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<StockMovement> StockMovements { get; set; } = [];
 }
 
 public class DrugCategory
@@ -46,5 +46,5 @@ public class DrugCategory
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public ICollection<Drug> Drugs { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<Drug> Drugs { get; set; } = [];
 }

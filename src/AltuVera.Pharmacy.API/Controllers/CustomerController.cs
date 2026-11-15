@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -12,6 +13,8 @@ namespace AltuVera.Pharmacy.API.Controllers;
 [Authorize]
 public class CustomerController(AppDbContext db) : ControllerBase
 {
+    private bool IsManager() => User.IsInRole(R.PharmacyManager) || User.IsInRole(R.Admin);
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? search)
     {
@@ -29,6 +32,7 @@ public class CustomerController(AppDbContext db) : ControllerBase
         return c is null ? NotFound() : Ok(c);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CustomerRequest req)
     {
@@ -41,6 +45,7 @@ public class CustomerController(AppDbContext db) : ControllerBase
             Dob = req.Dob,
             Gender = req.Gender is not null ? Enum.Parse<Gender>(req.Gender, true) : null,
             ClinicalRemarks = req.ClinicalRemarks,
+            DiscountRate = IsManager() ? Math.Clamp(req.DiscountRate ?? 0, 0, 100) : 0,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -49,6 +54,7 @@ public class CustomerController(AppDbContext db) : ControllerBase
         return Ok(customer);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] CustomerRequest req)
     {
@@ -61,6 +67,12 @@ public class CustomerController(AppDbContext db) : ControllerBase
         customer.Dob = req.Dob;
         customer.Gender = req.Gender is not null ? Enum.Parse<Gender>(req.Gender, true) : null;
         customer.ClinicalRemarks = req.ClinicalRemarks;
+        if (req.DiscountRate is not null && req.DiscountRate != customer.DiscountRate)
+        {
+            if (!IsManager()) return StatusCode(403, new { detail = "Only a Pharmacy Manager can set customer discount rates." });
+            customer.DiscountRate = Math.Clamp(req.DiscountRate.Value, 0, 100);
+        }
+        if (req.IsActive is not null) customer.IsActive = req.IsActive.Value;
         customer.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return Ok(customer);
@@ -72,33 +84,65 @@ public class CustomerController(AppDbContext db) : ControllerBase
 [Authorize]
 public class DoctorController(AppDbContext db) : ControllerBase
 {
+    private bool IsManager() => User.IsInRole(R.PharmacyManager) || User.IsInRole(R.Admin);
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? search)
     {
         var q = db.Doctors.AsQueryable();
         if (search is not null)
-            q = q.Where(d => EF.Functions.Like(d.Name, $"%{search}%"));
+            q = q.Where(d => EF.Functions.Like(d.Name, $"%{search}%") ||
+                             EF.Functions.Like(d.SlmcRegNo!, $"%{search}%") ||
+                             EF.Functions.Like(d.ContactNumber!, $"%{search}%"));
         return Ok(await q.OrderBy(d => d.Name).ToListAsync());
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] DoctorRequest req)
     {
-        var doctor = new Doctor { Name = req.Name, Specialization = req.Specialization, ContactNumber = req.ContactNumber, Address = req.Address, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        if (string.IsNullOrWhiteSpace(req.Name))
+            return BadRequest(new { detail = "Doctor name is required." });
+        if (string.IsNullOrWhiteSpace(req.SlmcRegNo))
+            return BadRequest(new { detail = "SLMC Registration Number is required." });
+        if (await db.Doctors.AnyAsync(d => d.SlmcRegNo == req.SlmcRegNo))
+            return BadRequest(new { detail = "A doctor with this SLMC Registration Number already exists." });
+        var doctor = new Doctor
+        {
+            Name = req.Name.Trim(), SlmcRegNo = req.SlmcRegNo.Trim(), Specialization = req.Specialization,
+            ContactNumber = req.ContactNumber, Email = req.Email, Hospital = req.Hospital, Address = req.Address,
+            DiscountRate = IsManager() ? Math.Clamp(req.DiscountRate ?? 0, 0, 100) : 0,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        };
         db.Doctors.Add(doctor);
         await db.SaveChangesAsync();
         return Ok(doctor);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] DoctorRequest req)
     {
         var doctor = await db.Doctors.FindAsync(id);
         if (doctor is null) return NotFound();
-        doctor.Name = req.Name;
-        doctor.Specialization = req.Specialization;
-        doctor.ContactNumber = req.ContactNumber;
-        doctor.Address = req.Address;
+        if (req.Name is not null) doctor.Name = req.Name;
+        if (req.SlmcRegNo is not null)
+        {
+            if (await db.Doctors.AnyAsync(d => d.Id != id && d.SlmcRegNo == req.SlmcRegNo))
+                return BadRequest(new { detail = "Another doctor already has this SLMC Registration Number." });
+            doctor.SlmcRegNo = req.SlmcRegNo.Trim();
+        }
+        if (req.Specialization is not null) doctor.Specialization = req.Specialization;
+        if (req.ContactNumber is not null) doctor.ContactNumber = req.ContactNumber;
+        if (req.Email is not null) doctor.Email = req.Email;
+        if (req.Hospital is not null) doctor.Hospital = req.Hospital;
+        if (req.Address is not null) doctor.Address = req.Address;
+        if (req.IsActive is not null) doctor.IsActive = req.IsActive.Value;
+        if (req.DiscountRate is not null && req.DiscountRate != doctor.DiscountRate)
+        {
+            if (!IsManager()) return StatusCode(403, new { detail = "Only a Pharmacy Manager can set doctor discount rates." });
+            doctor.DiscountRate = Math.Clamp(req.DiscountRate.Value, 0, 100);
+        }
         doctor.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return Ok(doctor);
@@ -113,6 +157,7 @@ public class SupplierController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List() => Ok(await db.Suppliers.OrderBy(s => s.Name).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] SupplierRequest req)
     {
@@ -122,6 +167,7 @@ public class SupplierController(AppDbContext db) : ControllerBase
         return Ok(supplier);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SupplierRequest req)
     {
@@ -133,6 +179,8 @@ public class SupplierController(AppDbContext db) : ControllerBase
     }
 }
 
-public record CustomerRequest(string Name, string ContactNumber, string? Email, string? Address, DateOnly? Dob, string? Gender, string? ClinicalRemarks);
-public record DoctorRequest(string Name, string? Specialization, string? ContactNumber, string? Address);
+public record CustomerRequest(string Name, string ContactNumber, string? Email, string? Address, DateOnly? Dob, string? Gender, string? ClinicalRemarks,
+    decimal? DiscountRate = null, bool? IsActive = null);
+public record DoctorRequest(string? Name, string? SlmcRegNo, string? Specialization, string? ContactNumber, string? Address,
+    string? Email = null, string? Hospital = null, decimal? DiscountRate = null, bool? IsActive = null);
 public record SupplierRequest(string Name, string? Address, string? ContactNumber, string? SpecialRemarks);

@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -34,18 +35,84 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         return inv is null ? NotFound() : Ok(inv);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] InvoiceCreateRequest req)
     {
         var userId = int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid) ? uid : (int?)null;
 
-        // Check stock
+        if (req.Items is null || req.Items.Count == 0)
+            return BadRequest(new { detail = "Invoice has no items" });
+
+        // Check stock, expiry and regulatory flags
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        bool anyRegulated = false, anyHighAlert = false, anyNarcotic = false;
         foreach (var item in req.Items)
         {
             var drug = await db.Drugs.FindAsync(item.DrugId);
             if (drug is null) return BadRequest(new { detail = $"Drug {item.DrugId} not found" });
+            if (!drug.IsActive) return BadRequest(new { detail = $"{drug.BrandName} is inactive" });
+            if (drug.ExpiryDate.HasValue && drug.ExpiryDate.Value < today)
+                return BadRequest(new { detail = $"{drug.BrandName} batch {drug.BatchNumber} is expired and cannot be sold" });
+            if (item.Quantity <= 0) return BadRequest(new { detail = $"Invalid quantity for {drug.BrandName}" });
             if (drug.Quantity < item.Quantity)
                 return BadRequest(new { detail = $"Insufficient stock for {drug.BrandName}" });
+            if (drug.IsPrescriptionOnly || drug.IsHighAlert || drug.IsNarcotic) anyRegulated = true;
+            if (drug.IsHighAlert) anyHighAlert = true;
+            if (drug.IsNarcotic) anyNarcotic = true;
+        }
+
+        // Requirements: customer mandatory and scanned prescription required for POM / High Alert / Narcotic
+        Customer? customer = null;
+        if (req.CustomerId is not null)
+        {
+            customer = await db.Customers.FindAsync(req.CustomerId);
+            if (customer is null) return BadRequest(new { detail = "Customer not found" });
+        }
+        if (anyRegulated)
+        {
+            if (customer is null)
+                return BadRequest(new { detail = "A customer must be linked when selling POM, High Alert or Narcotic drugs." });
+            if (req.PrescriptionId is null)
+                return BadRequest(new { detail = "A prescription must be linked when selling POM, High Alert or Narcotic drugs." });
+            var rx = await db.Prescriptions.FindAsync(req.PrescriptionId);
+            if (rx is null || !rx.IsActive) return BadRequest(new { detail = "Prescription not found or inactive." });
+            if (rx.CustomerId != customer.Id) return BadRequest(new { detail = "The prescription belongs to a different customer." });
+            if (string.IsNullOrEmpty(rx.ScanFilePath))
+                return BadRequest(new { detail = "The prescription has no scanned copy. Upload the scan before dispensing." });
+            var validUntil = rx.IssueDate.AddDays(rx.ValidDays ?? 0).AddMonths(rx.ValidMonths ?? 0);
+            if ((rx.ValidDays ?? 0) == 0 && (rx.ValidMonths ?? 0) == 0) validUntil = rx.IssueDate.AddMonths(1);
+            if (today > validUntil)
+                return BadRequest(new { detail = $"The prescription expired on {validUntil:yyyy-MM-dd}." });
+            if (rx.ReproduceType == ReproduceType.OneTime &&
+                await db.Invoices.AnyAsync(i => i.PrescriptionId == rx.Id && i.Status != InvoiceStatus.Cancelled))
+                return BadRequest(new { detail = "This one-time prescription has already been dispensed." });
+        }
+        if (anyNarcotic && req.DoctorId is null)
+            return BadRequest(new { detail = "Narcotic drugs need the prescribing doctor (SLMC registered) to be linked." });
+        if (req.DoctorId is not null)
+        {
+            var doc = await db.Doctors.FindAsync(req.DoctorId);
+            if (doc is null) return BadRequest(new { detail = "Doctor not found" });
+            if (anyNarcotic && string.IsNullOrWhiteSpace(doc.SlmcRegNo))
+                return BadRequest(new { detail = "The doctor has no SLMC Registration Number on record." });
+        }
+
+        // High Alert / Narcotic: prescription must be validated and confirmed by a pharmacist
+        int? verifiedBy = null;
+        if (anyHighAlert || anyNarcotic)
+        {
+            if (!string.IsNullOrWhiteSpace(req.VerifierUsername))
+            {
+                var v = await db.Users.FirstOrDefaultAsync(u => u.Username == req.VerifierUsername && u.IsActive);
+                if (v is null || v.UserType == UserType.StockManager || !BCrypt.Net.BCrypt.Verify(req.VerifierPassword ?? "", v.HashedPassword))
+                    return BadRequest(new { detail = "Pharmacist verification failed." });
+                verifiedBy = v.Id;
+            }
+            else if (req.PharmacistVerified == true && userId is not null)
+                verifiedBy = userId;
+            else
+                return BadRequest(new { detail = "High Alert / Narcotic items must be verified by a pharmacist." });
         }
 
         var invoiceNumber = $"INV-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
@@ -63,6 +130,7 @@ public class InvoiceController(AppDbContext db) : ControllerBase
             PaymentMode = Enum.Parse<PaymentMode>(req.PaymentMode, true),
             Notes = req.Notes,
             ServedByUserId = userId,
+            VerifiedByUserId = verifiedBy,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -94,11 +162,21 @@ public class InvoiceController(AppDbContext db) : ControllerBase
             });
         }
 
+        // Loyalty: 1 point per Rs. 100 spent
+        if (customer is not null && req.TotalAmount > 0)
+        {
+            var pts = (int)Math.Floor(req.TotalAmount / 100m);
+            invoice.LoyaltyPointsEarned = pts;
+            customer.LoyaltyPoints += pts;
+            customer.UpdatedAt = DateTime.UtcNow;
+        }
+
         db.Invoices.Add(invoice);
         await db.SaveChangesAsync();
         return Ok(invoice);
     }
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost("{id:int}/cancel")]
     public async Task<IActionResult> Cancel(int id, [FromBody] CancelRequest req)
     {
@@ -111,6 +189,12 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         invoice.CancelledAt = DateTime.UtcNow;
         invoice.CancellationReason = req.Reason;
         invoice.UpdatedAt = DateTime.UtcNow;
+
+        if (invoice.CustomerId is not null && invoice.LoyaltyPointsEarned > 0)
+        {
+            var c = await db.Customers.FindAsync(invoice.CustomerId);
+            if (c is not null) { c.LoyaltyPoints = Math.Max(0, c.LoyaltyPoints - invoice.LoyaltyPointsEarned); c.UpdatedAt = DateTime.UtcNow; }
+        }
 
         foreach (var item in invoice.Items)
         {
@@ -126,5 +210,6 @@ public class InvoiceController(AppDbContext db) : ControllerBase
 public record InvoiceItemRequest(int DrugId, int Quantity, decimal UnitPrice, decimal DiscountRate, decimal DiscountAmount, decimal LineTotal);
 public record InvoiceCreateRequest(int? CustomerId, int? DoctorId, int? PrescriptionId,
     decimal Subtotal, decimal DiscountAmount, decimal TaxRate, decimal TaxAmount, decimal TotalAmount,
-    string PaymentMode, string? Notes, List<InvoiceItemRequest> Items);
+    string PaymentMode, string? Notes, List<InvoiceItemRequest> Items,
+    bool? PharmacistVerified = null, string? VerifierUsername = null, string? VerifierPassword = null);
 public record CancelRequest(string? Reason);

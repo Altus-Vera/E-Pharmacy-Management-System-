@@ -1,8 +1,8 @@
 @echo off
-title AltuVera Pharmacy - Start All
+title AltusVera Pharmacy - Start All
 set SCRIPTS=%~dp0scripts
 
-echo Starting AltuVera Pharmacy System...
+echo Starting AltusVera Pharmacy System...
 echo.
 
 start "Pharmacy API"          cmd /k "%SCRIPTS%\run-api.bat"

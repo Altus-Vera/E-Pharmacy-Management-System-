@@ -30,3 +30,11 @@
 .lg { padding: var(--space-3) var(--space-6); font-size: var(--font-size-base); }
 .fullWidth { width: 100%; }
 .loading { pointer-events: none; }
+
+/* ── Solid / modern skin ── */
+.btn { font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.primary { background: linear-gradient(180deg, #16A34A 0%, #166534 100%); border-color: #14532D; box-shadow: 0 2px 0 #0F3D22, 0 2px 6px rgba(22,101,52,.25); }
+.primary:hover:not(:disabled) { background: linear-gradient(180deg, #15803D 0%, #14532D 100%); }
+.primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #0F3D22; }
+.secondary { border-width: 1.5px; }
+.danger { background: linear-gradient(180deg, #DC2626 0%, #B91C1C 100%); box-shadow: 0 2px 0 #7F1D1D; }

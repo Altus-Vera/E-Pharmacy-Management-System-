@@ -7,6 +7,8 @@ import { Input } from "../../components/ui/Input";
 import { Table } from "../../components/ui/Table";
 import { formatDate } from "../../utils/formatters";
 import type { Customer, Prescription } from "../../types";
+import { Modal } from "../../components/ui/Modal";
+import { PrescriptionForm } from "../../components/PrescriptionForm";
 import styles from "./Prescriptions.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -20,6 +22,7 @@ export function PrescriptionsPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [loading, setLoading] = useState(true);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<number | null>(null);
 
@@ -103,6 +106,11 @@ export function PrescriptionsPage() {
           <div className={styles.statValue}>{prescriptions.filter((p) => p.scan_file_path).length}</div>
           <div className={styles.statLabel}>With Scan</div>
         </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+        {!selectedCustomer && <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>Pick a patient below to add a prescription</span>}
+        <Button disabled={!selectedCustomer} onClick={() => setNewOpen(true)}>+ New Prescription</Button>
       </div>
 
       {/* Toolbar */}
@@ -240,6 +248,17 @@ export function PrescriptionsPage() {
         style={{ display: "none" }}
         onChange={handleFileChange}
       />
+
+      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="New Prescription" size="lg">
+        {selectedCustomer && (
+          <PrescriptionForm
+            customerId={selectedCustomer.id}
+            customerName={`${selectedCustomer.name} · ${selectedCustomer.contact_number}`}
+            onCancel={() => setNewOpen(false)}
+            onSaved={() => { setNewOpen(false); selectCustomer(selectedCustomer); }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

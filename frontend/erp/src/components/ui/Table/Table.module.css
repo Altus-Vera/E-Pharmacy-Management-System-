@@ -9,3 +9,11 @@
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover td { background: var(--color-surface-raised); }
 .empty { text-align: center; color: var(--color-text-muted); padding: var(--space-10) !important; }
+
+/* ── Solid / modern skin ── */
+.wrapper { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.table thead tr { background: #14532D !important; border-bottom: none !important; }
+.table th { color: #FFFFFF !important; font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: .05em; font-weight: 800 !important; position: sticky; top: 0; background: #14532D; }
+.table td { color: var(--color-text); }
+.table tbody tr:nth-child(even) td { background: #F7FAF8; }
+.table tbody tr:hover td { background: var(--color-primary-light) !important; }

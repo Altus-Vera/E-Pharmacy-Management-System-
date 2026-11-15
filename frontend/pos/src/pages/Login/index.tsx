@@ -42,7 +42,7 @@ export function LoginPage() {
               <path d="M12 5v14M5 12h14" />
             </svg>
           </div>
-          <div className={styles.brandName}>E-Pharmacy POS</div>
+          <div className={styles.brandName}>AltusVera POS</div>
           <div className={styles.brandSub}>Dispensary &amp; Point of Sale</div>
         </div>
 
@@ -109,7 +109,7 @@ export function LoginPage() {
         </form>
 
         <div className={styles.footer}>
-          Authorized personnel only &bull; E-Pharmacy Management System
+          Authorized personnel only &bull; AltusVera Management System
         </div>
       </div>
     </div>

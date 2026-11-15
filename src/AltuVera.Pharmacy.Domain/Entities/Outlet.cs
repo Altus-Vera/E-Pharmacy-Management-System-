@@ -15,8 +15,8 @@ public class Outlet
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public ICollection<StockTransfer> TransfersOut { get; set; } = [];
-    public ICollection<StockTransfer> TransfersIn { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<StockTransfer> TransfersOut { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore] public ICollection<StockTransfer> TransfersIn { get; set; } = [];
 }
 
 public class StockTransfer

@@ -1,4 +1,4 @@
-# AltuVera Pharmacy — New Architecture
+# AltusVera Pharmacy — New Architecture
 
 ## Architecture
 

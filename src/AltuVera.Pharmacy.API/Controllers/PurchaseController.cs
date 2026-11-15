@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -26,6 +27,7 @@ public class PurchaseOrderController(AppDbContext db) : ControllerBase
         return po is null ? NotFound() : Ok(po);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] PurchaseOrderRequest req)
     {
@@ -48,6 +50,7 @@ public class PurchaseOrderController(AppDbContext db) : ControllerBase
         return Ok(po);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPatch("{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] StatusRequest req)
     {
@@ -70,6 +73,7 @@ public class GoodsReceiptController(AppDbContext db) : ControllerBase
         Ok(await db.GoodsReceipts.Include(gr => gr.Supplier).Include(gr => gr.Items)
             .OrderByDescending(gr => gr.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] GrnRequest req)
     {

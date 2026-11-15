@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 import styles from "./Sidebar.module.css";
+import { useAuthStore } from "../../store/authStore";
+import { canAccess } from "../../utils/roles";
 
 const navItems = [
   { section: "Operations" },
@@ -18,6 +20,7 @@ const navItems = [
   { to: "/purchase-orders", label: "Purchase Orders", icon: "🛒" },
   { to: "/grn", label: "Goods Receipt (GRN)", icon: "📥" },
   { to: "/purchase-invoices", label: "Purchase Invoices", icon: "🧾" },
+  { to: "/supplier-returns", label: "Supplier Returns", icon: "↪" },
   { section: "Sales" },
   { to: "/sales-returns", label: "Sales Returns", icon: "↩" },
   { section: "Branches" },
@@ -26,13 +29,19 @@ const navItems = [
   { section: "Admin" },
   { to: "/users", label: "User Management", icon: "👤" },
   { to: "/reports", label: "Reports", icon: "📊" },
+  { to: "/audit-log", label: "Audit Log", icon: "🛡" },
+  { to: "/system", label: "System & Backup", icon: "⚙" },
 ];
 
 export function Sidebar() {
+  const userType = useAuthStore((s) => s.user?.user_type);
+  // hide links the role cannot open, then drop section headers left empty
+  const visible = navItems.filter((it) => "section" in it || canAccess(it.to, userType));
+  const items = visible.filter((it, i) => !("section" in it) || (visible[i + 1] && !("section" in visible[i + 1])));
   return (
     <aside className={styles.sidebar}>
       <nav className={styles.nav}>
-        {navItems.map((item, i) => {
+        {items.map((item, i) => {
           if ("section" in item) {
             return <div key={i} className={styles.section}>{item.section}</div>;
           }

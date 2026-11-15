@@ -6,6 +6,9 @@ import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
 import { Table } from "../../components/ui/Table";
 import type { Doctor, DoctorCreate } from "../../types";
+import { apiError } from "../../utils/errors";
+import { isManager } from "../../utils/roles";
+import { useAuthStore } from "../../store/authStore";
 import styles from "./Doctors.module.css";
 
 const emptyForm: DoctorCreate = {
@@ -26,6 +29,7 @@ export function DoctorsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Doctor | null>(null);
   const [form, setForm] = useState<DoctorCreate>(emptyForm);
+  const user = useAuthStore((st) => st.user);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
@@ -58,6 +62,7 @@ export function DoctorsPage() {
       hospital_clinic: d.hospital_clinic ?? "",
       contact_number: d.contact_number ?? "",
       email: d.email ?? "",
+      discount_rate: d.discount_rate ?? 0,
     });
     setModalOpen(true);
   }
@@ -80,7 +85,7 @@ export function DoctorsPage() {
         setDoctors((prev) => [created, ...prev]);
       }
       setModalOpen(false);
-    } finally { setSaving(false); }
+    } catch (e) { alert(apiError(e)); } finally { setSaving(false); }
   }
 
   async function toggleActive(d: Doctor) {
@@ -125,7 +130,7 @@ export function DoctorsPage() {
         <div className={styles.toolbarLeft}>
           <Input
             label="Search"
-            placeholder="Search by name, SLMC, or specialization…"
+            placeholder="Search by name, SLMC number or phone…"
             value={query}
             onChange={(e) => search(e.target.value)}
           />
@@ -213,6 +218,13 @@ export function DoctorsPage() {
           <Input label="Hospital / Clinic" value={form.hospital_clinic ?? ""} onChange={(e) => f("hospital_clinic", e.target.value)} placeholder="e.g. National Hospital" />
           <Input label="Contact Number" value={form.contact_number ?? ""} onChange={(e) => f("contact_number", e.target.value)} />
           <Input label="Email" type="email" value={form.email ?? ""} onChange={(e) => f("email", e.target.value)} />
+          <Input
+            label={isManager(user?.user_type) ? "Doctor Discount %" : "Doctor Discount % (manager only)"}
+            type="number" min={0} max={100} step={0.5}
+            disabled={!isManager(user?.user_type)}
+            value={form.discount_rate ?? 0}
+            onChange={(e) => setForm((p) => ({ ...p, discount_rate: parseFloat(e.target.value) || 0 }))}
+          />
         </div>
       </Modal>
     </div>

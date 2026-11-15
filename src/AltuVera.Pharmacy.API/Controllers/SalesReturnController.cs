@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -17,6 +18,7 @@ public class SalesReturnController(AppDbContext db) : ControllerBase
         Ok(await db.SalesReturns.Include(r => r.Invoice).Include(r => r.Drug)
             .OrderByDescending(r => r.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Pos)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] SalesReturnRequest req)
     {
@@ -39,6 +41,7 @@ public class SalesReturnController(AppDbContext db) : ControllerBase
         return Ok(ret);
     }
 
+    [Authorize(Roles = R.Manager)]
     [HttpPatch("{id:int}/approve")]
     public async Task<IActionResult> Approve(int id)
     {
@@ -62,6 +65,7 @@ public class PurchaseRequisitionController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> List() =>
         Ok(await db.PurchaseRequisitions.Include(r => r.Drug).OrderByDescending(r => r.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] RequisitionRequest req)
     {
@@ -81,6 +85,7 @@ public class PurchaseRequisitionController(AppDbContext db) : ControllerBase
         return Ok(req2);
     }
 
+    [Authorize(Roles = R.Manager)]
     [HttpPatch("{id:int}/approve")]
     public async Task<IActionResult> Approve(int id)
     {
@@ -105,6 +110,7 @@ public class PurchaseInvoiceController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> List() =>
         Ok(await db.PurchaseInvoices.Include(i => i.Supplier).OrderByDescending(i => i.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] PurchaseInvoiceRequest req)
     {
@@ -124,6 +130,7 @@ public class PurchaseInvoiceController(AppDbContext db) : ControllerBase
         return Ok(inv);
     }
 
+    [Authorize(Roles = R.Manager)]
     [HttpPatch("{id:int}/pay")]
     public async Task<IActionResult> MarkPaid(int id)
     {

@@ -1,41 +1,42 @@
 import { useEffect, useState } from "react";
-import {
-  salesReturnService,
-  type SalesReturn,
-  type SalesReturnCreate,
-  type SalesReturnItemCreate,
-  type ReturnReason,
-} from "../../services/sales_return.service";
+import api from "../../services/api";
+import { salesReturnService, type ReturnReason, type SalesReturn } from "../../services/sales_return.service";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { Table } from "../../components/ui/Table";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import { Table } from "../../components/ui/Table";
-import styles from "./SalesReturns.module.css";
+import { formatCurrency, formatDateTime } from "../../utils/formatters";
+import { apiError, exportCsv } from "../../utils/errors";
+import s from "../../styles/erp.module.css";
 
-const today = new Date().toISOString().split("T")[0];
+interface InvoiceLine { id: number; drug_id: number; quantity: number; unit_price: number; line_total: number; discount_amount: number; drug?: { brand_name: string; item_code: string } | null }
+interface InvoiceFull { id: number; invoice_number: string; total_amount: number; status: string; created_at: string; customer?: { name: string } | null; items: InvoiceLine[] }
 
-const REASON_LABELS: Record<ReturnReason, string> = {
-  wrong_item: "Wrong Item",
-  damaged: "Damaged",
-  expired: "Expired",
-  patient_refused: "Patient Refused",
-  other: "Other",
-};
+const REASONS: { value: ReturnReason; label: string }[] = [
+  { value: "damaged", label: "Damaged" },
+  { value: "expired", label: "Expired" },
+  { value: "wrong_item", label: "Wrong item" },
+  { value: "patient_refusal", label: "Patient refusal" },
+  { value: "other", label: "Other" },
+];
+
+const statusVariant = (st: string) => (st === "approved" ? "success" : st === "rejected" ? "danger" : "warning");
 
 export function SalesReturnsPage() {
   const [returns, setReturns] = useState<SalesReturn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [detailRet, setDetailRet] = useState<SalesReturn | null>(null);
+  const [invNo, setInvNo] = useState("");
+  const [invoice, setInvoice] = useState<InvoiceFull | null>(null);
+  const [lineId, setLineId] = useState(0);
+  const [qty, setQty] = useState(1);
+  const [reason, setReason] = useState<ReturnReason>("damaged");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const [form, setForm] = useState<Omit<SalesReturnCreate, "items">>({
-    return_date: today,
-    reason: "other",
-    notes: "",
-  });
-  const [items, setItems] = useState<SalesReturnItemCreate[]>([{ drug_id: 0, quantity_returned: 1, unit_price: 0, restock: true }]);
+  const [error, setError] = useState("");
 
   useEffect(() => { load(); }, []);
 
@@ -46,145 +47,154 @@ export function SalesReturnsPage() {
   }
 
   function openNew() {
-    setForm({ return_date: today, reason: "other", notes: "" });
-    setItems([{ drug_id: 0, quantity_returned: 1, unit_price: 0, restock: true }]);
+    setInvNo(""); setInvoice(null); setLineId(0); setQty(1); setReason("damaged"); setNotes(""); setError("");
     setModalOpen(true);
   }
 
-  function addItem() { setItems(p => [...p, { drug_id: 0, quantity_returned: 1, unit_price: 0, restock: true }]); }
-  function removeItem(idx: number) { setItems(p => p.filter((_, i) => i !== idx)); }
-  function updateItem(idx: number, field: keyof SalesReturnItemCreate, value: string | number | boolean) {
-    setItems(p => p.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+  async function findInvoice() {
+    setError(""); setInvoice(null); setLineId(0);
+    const t = invNo.trim().toLowerCase();
+    if (!t) return;
+    try {
+      const list = (await api.get<InvoiceFull[]>("/invoices")).data;
+      const hit = list.find((i) => i.invoice_number.toLowerCase() === t) ?? list.find((i) => i.invoice_number.toLowerCase().includes(t));
+      if (!hit) { setError("No invoice found with that number."); return; }
+      const full = (await api.get<InvoiceFull>(`/invoices/${hit.id}`)).data;
+      if (full.status === "cancelled") { setError("That invoice is cancelled — nothing to return."); return; }
+      setInvoice(full);
+      if (full.items.length === 1) { setLineId(full.items[0].id); setQty(1); }
+    } catch (e) { setError(apiError(e)); }
   }
+
+  const line = invoice?.items.find((i) => i.id === lineId);
+  const alreadyReturned = line ? returns.filter((r) => r.invoice_id === invoice!.id && r.drug_id === line.drug_id && r.status !== "rejected").reduce((a, r) => a + r.quantity, 0) : 0;
+  const maxQty = line ? line.quantity - alreadyReturned : 0;
+  const unitNet = line ? line.line_total / line.quantity : 0;
+  const refund = Math.round(unitNet * qty * 100) / 100;
 
   async function save() {
-    setSaving(true);
+    if (!invoice || !line) { setError("Find the invoice and choose the item being returned."); return; }
+    if (qty <= 0 || qty > maxQty) { setError(`Quantity must be between 1 and ${maxQty}.`); return; }
+    setSaving(true); setError("");
     try {
-      await salesReturnService.create({ ...form, items });
+      await salesReturnService.create({ invoice_id: invoice.id, drug_id: line.drug_id, quantity: qty, refund_amount: refund, reason, notes });
       setModalOpen(false);
-      load();
-    } finally { setSaving(false); }
+      await load();
+    } catch (e) { setError(apiError(e)); }
+    finally { setSaving(false); }
   }
 
-  const totalRefund = returns.reduce((s, r) => s + Number(r.total_refund), 0);
-  const thisMonth = returns.filter(r => {
-    const d = new Date(r.return_date);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+  async function approve(r: SalesReturn) {
+    if (!confirm(`Approve ${r.return_number}? ${r.quantity} unit(s) go back into stock.`)) return;
+    setError("");
+    try {
+      const u = await salesReturnService.approve(r.id);
+      setReturns((p) => p.map((x) => (x.id === r.id ? { ...x, status: u.status } : x)));
+    } catch (e) { setError(apiError(e)); }
+  }
+
+  const filtered = returns.filter((r) => {
+    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    const t = q.trim().toLowerCase();
+    return !t || r.return_number.toLowerCase().includes(t) || (r.invoice?.invoice_number ?? "").toLowerCase().includes(t) || (r.drug?.brand_name ?? "").toLowerCase().includes(t);
+  });
+
+  const pending = returns.filter((r) => r.status === "pending");
 
   return (
-    <div className={styles.page}>
-      <div className={styles.statsBar}>
-        <div className={styles.statCard}><div className={styles.statValue}>{returns.length}</div><div className={styles.statLabel}>Total Returns</div></div>
-        <div className={styles.statCard}><div className={styles.statValue}>{thisMonth}</div><div className={styles.statLabel}>This Month</div></div>
-        <div className={styles.statCard}><div className={`${styles.statValue} ${styles.warn}`}>LKR {totalRefund.toLocaleString("en-LK", { minimumFractionDigits: 2 })}</div><div className={styles.statLabel}>Total Refunded</div></div>
+    <div className={s.page}>
+      <div className={s.stats}>
+        <div className={s.stat}><div className={s.statLabel}>Returns</div><div className={s.statValue}>{returns.length}</div></div>
+        <div className={`${s.stat} ${s.statWarn}`}><div className={s.statLabel}>Pending Approval</div><div className={s.statValue}>{pending.length}</div></div>
+        <div className={`${s.stat} ${s.statDanger}`}><div className={s.statLabel}>Total Refunded</div><div className={s.statValue}>{formatCurrency(returns.filter((r) => r.status === "approved").reduce((a, r) => a + r.refund_amount, 0))}</div></div>
       </div>
 
-      <div className={styles.toolbar}>
-        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
-          Process customer drug returns — restocked items return to inventory
-        </span>
-        <Button variant="primary" onClick={openNew}>+ New Return</Button>
+      <div className={s.toolbar}>
+        <input className={s.search} placeholder="Search return #, invoice # or drug…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className={s.select} style={{ width: 170 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <div className={s.spacer} />
+        <Button
+          variant="secondary"
+          onClick={() => exportCsv("sales-returns.csv", [
+            ["Return #", "Invoice #", "Drug", "Qty", "Refund", "Reason", "Status", "Date"],
+            ...filtered.map((r) => [r.return_number, r.invoice?.invoice_number ?? r.invoice_id, r.drug?.brand_name ?? r.drug_id, r.quantity, r.refund_amount.toFixed(2), r.reason, r.status, r.created_at]),
+          ])}
+        >Export CSV</Button>
+        <Button onClick={openNew}>+ New Return</Button>
       </div>
+      {error && !modalOpen && <div className={s.error}>{error}</div>}
 
       <Table<SalesReturn>
         columns={[
-          { key: "return_number", header: "Return #", render: r => <code style={{ fontSize: "var(--font-size-sm)" }}>{r.return_number}</code> },
-          { key: "invoice", header: "Invoice", render: r => r.invoice_id ? <span>#{r.invoice_id}</span> : <span style={{ color: "var(--color-text-muted)" }}>—</span> },
-          { key: "customer", header: "Customer", render: r => r.customer_id ? <span>#{r.customer_id}</span> : <span style={{ color: "var(--color-text-muted)" }}>Walk-in</span> },
-          { key: "date", header: "Date", render: r => <span>{r.return_date}</span> },
-          { key: "reason", header: "Reason", render: r => <Badge variant="neutral">{REASON_LABELS[r.reason]}</Badge> },
-          { key: "items_count", header: "Items", render: r => <span>{r.items.length}</span> },
-          { key: "refund", header: "Total Refund", render: r => <span style={{ textAlign: "right", display: "block", fontWeight: "var(--font-weight-medium)" }}>LKR {Number(r.total_refund).toFixed(2)}</span> },
-          { key: "actions", header: "", render: r => <Button size="sm" variant="ghost" onClick={() => setDetailRet(r)}>View</Button> },
+          { key: "return_number", header: "Return #", render: (r) => <span className={s.strong}>{r.return_number}</span> },
+          { key: "invoice", header: "Invoice #", render: (r) => r.invoice?.invoice_number ?? `#${r.invoice_id}` },
+          { key: "drug", header: "Drug", render: (r) => r.drug ? <>{r.drug.brand_name} <span className={s.muted}>{r.drug.item_code}</span></> : `#${r.drug_id}` },
+          { key: "quantity", header: "Qty" },
+          { key: "refund_amount", header: "Refund", render: (r) => formatCurrency(r.refund_amount) },
+          { key: "reason", header: "Reason", render: (r) => REASONS.find((x) => x.value === r.reason)?.label ?? r.reason },
+          { key: "status", header: "Status", render: (r) => <Badge variant={statusVariant(r.status)}>{r.status.charAt(0).toUpperCase() + r.status.slice(1)}</Badge> },
+          { key: "created_at", header: "Date", render: (r) => formatDateTime(r.created_at) },
+          { key: "actions", header: "", render: (r) => (r.status === "pending" ? <Button size="sm" onClick={() => approve(r)}>Approve &amp; Restock</Button> : null) },
         ]}
-        data={returns}
-        rowKey={r => r.id}
-        emptyMessage={loading ? "Loading…" : "No returns found."}
+        data={filtered}
+        rowKey={(r) => r.id}
+        emptyMessage={loading ? "Loading…" : "No sales returns found."}
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Sales Return">
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
-            <Input label="Return Date *" type="date" value={form.return_date} onChange={e => setForm(f => ({ ...f, return_date: e.target.value }))} />
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <label style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", color: "var(--color-text)" }}>Reason *</label>
-              <select
-                value={form.reason}
-                onChange={e => setForm(f => ({ ...f, reason: e.target.value as ReturnReason }))}
-                style={{ padding: "var(--space-2) var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", fontSize: "var(--font-size-sm)", background: "var(--color-surface)", color: "var(--color-text)" }}
-              >
-                {(Object.entries(REASON_LABELS) as [ReturnReason, string][]).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
-            <Input label="Invoice ID" type="number" value={form.invoice_id ?? ""} onChange={e => setForm(f => ({ ...f, invoice_id: parseInt(e.target.value) || undefined }))} placeholder="Optional" />
-            <Input label="Customer ID" type="number" value={form.customer_id ?? ""} onChange={e => setForm(f => ({ ...f, customer_id: parseInt(e.target.value) || undefined }))} placeholder="Optional" />
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="New Sales Return"
+        size="lg"
+        footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button loading={saving} disabled={!line} onClick={save}>Record Return ({formatCurrency(refund)})</Button></>}
+      >
+        {error && <div className={s.error}>{error}</div>}
+        <div className={s.toolbar} style={{ alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <Input label="Invoice Number" value={invNo} placeholder="e.g. INV-1794665994963" onChange={(e) => setInvNo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && findInvoice()} />
           </div>
-          <Input label="Notes" value={form.notes ?? ""} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional notes" />
-
-          <div className={styles.itemsSection}>
-            <div className={styles.itemsHeader}>
-              <span>Items Being Returned</span>
-              <Button size="sm" variant="ghost" onClick={addItem}>+ Add Item</Button>
-            </div>
-            {items.map((item, idx) => (
-              <div key={idx} className={styles.itemRow}>
-                <Input label="Drug ID" type="number" value={item.drug_id || ""} onChange={e => updateItem(idx, "drug_id", parseInt(e.target.value) || 0)} placeholder="ID" />
-                <Input label="Qty" type="number" value={item.quantity_returned} onChange={e => updateItem(idx, "quantity_returned", parseInt(e.target.value) || 1)} />
-                <Input label="Unit Price" type="number" step="0.01" value={item.unit_price} onChange={e => updateItem(idx, "unit_price", parseFloat(e.target.value) || 0)} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)", justifyContent: "flex-end", paddingBottom: "2px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
-                    <input type="checkbox" checked={item.restock} onChange={e => updateItem(idx, "restock", e.target.checked)} />
-                    Restock
-                  </label>
-                </div>
-                {items.length > 1 && <button className={styles.removeBtn} onClick={() => removeItem(idx)}>✕</button>}
-              </div>
-            ))}
-          </div>
-
-          <div className={styles.totalPreview}>
-            Total Refund: <strong>LKR {items.reduce((s, i) => s + i.quantity_returned * i.unit_price, 0).toFixed(2)}</strong>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-3)" }}>
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={save} disabled={saving || items.some(i => !i.drug_id)}>{saving ? "Processing…" : "Process Return"}</Button>
-          </div>
+          <Button variant="secondary" onClick={findInvoice}>Find</Button>
         </div>
-      </Modal>
 
-      <Modal open={!!detailRet} onClose={() => setDetailRet(null)} title={`Return — ${detailRet?.return_number}`}>
-        {detailRet && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)", fontSize: "var(--font-size-sm)" }}>
-              <div><span style={{ color: "var(--color-text-muted)" }}>Date:</span> {detailRet.return_date}</div>
-              <div><span style={{ color: "var(--color-text-muted)" }}>Reason:</span> <Badge variant="neutral">{REASON_LABELS[detailRet.reason]}</Badge></div>
-              {detailRet.invoice_id && <div><span style={{ color: "var(--color-text-muted)" }}>Invoice:</span> #{detailRet.invoice_id}</div>}
-              {detailRet.notes && <div style={{ gridColumn: "span 2" }}><span style={{ color: "var(--color-text-muted)" }}>Notes:</span> {detailRet.notes}</div>}
-            </div>
-            <table className={styles.detailTable}>
-              <thead><tr><th>Drug ID</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Restock</th></tr></thead>
-              <tbody>
-                {detailRet.items.map(it => (
-                  <tr key={it.id}>
-                    <td>#{it.drug_id}</td>
-                    <td>{it.quantity_returned}</td>
-                    <td>{Number(it.unit_price).toFixed(2)}</td>
-                    <td>{Number(it.line_total).toFixed(2)}</td>
-                    <td>{it.restock ? "✓" : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ textAlign: "right", fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
-              Total Refund: <strong>LKR {Number(detailRet.total_refund).toFixed(2)}</strong>
-            </div>
+        {invoice && <>
+          <div className={s.detailGrid} style={{ marginTop: "var(--space-3)" }}>
+            <div><span className={s.muted}>Invoice</span><div className={s.strong}>{invoice.invoice_number}</div></div>
+            <div><span className={s.muted}>Date</span><div>{formatDateTime(invoice.created_at)}</div></div>
+            <div><span className={s.muted}>Customer</span><div>{invoice.customer?.name ?? "Walk-in"}</div></div>
+            <div><span className={s.muted}>Total</span><div>{formatCurrency(invoice.total_amount)}</div></div>
           </div>
-        )}
+          <table className={s.dtable}>
+            <thead><tr><th></th><th>Item</th><th className={s.num}>Sold</th><th className={s.num}>Net / unit</th></tr></thead>
+            <tbody>
+              {invoice.items.map((i) => (
+                <tr key={i.id} onClick={() => { setLineId(i.id); setQty(1); }} style={{ cursor: "pointer", background: i.id === lineId ? "var(--color-primary-light)" : undefined }}>
+                  <td><input type="radio" checked={i.id === lineId} readOnly /></td>
+                  <td>{i.drug ? `${i.drug.brand_name} (${i.drug.item_code})` : `Drug #${i.drug_id}`}</td>
+                  <td className={s.num}>{i.quantity}</td>
+                  <td className={s.num}>{formatCurrency(i.line_total / i.quantity)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {line && (
+            <div className={s.formGrid} style={{ marginTop: "var(--space-3)" }}>
+              <Input label={`Quantity (max ${maxQty})`} type="number" min={1} max={maxQty} value={qty} onChange={(e) => setQty(parseInt(e.target.value) || 0)} />
+              <div className={s.field}>
+                <span className={s.fieldLabel}>Reason</span>
+                <select className={s.select} value={reason} onChange={(e) => setReason(e.target.value as ReturnReason)}>
+                  {REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </div>
+              <div className={s.full}><Input label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+              {alreadyReturned > 0 && <div className={`${s.full} ${s.muted}`}>{alreadyReturned} unit(s) of this item were already returned on this invoice.</div>}
+            </div>
+          )}
+        </>}
       </Modal>
     </div>
   );

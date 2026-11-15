@@ -4,6 +4,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { formatCurrency, formatDate } from "../../utils/formatters";
 import styles from "./Reports.module.css";
+import { ListingsReport, StockMovementReport } from "./Listings";
 
 type ReportTab =
   | "near_expiry"
@@ -12,7 +13,9 @@ type ReportTab =
   | "slow_moving"
   | "stock_valuation"
   | "stock_taking"
-  | "sales";
+  | "sales"
+  | "movement"
+  | "listings";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +64,7 @@ export function ReportsPage() {
   useEffect(() => { loadTab(activeTab); }, [activeTab]);
 
   async function loadTab(tab: ReportTab) {
+    if (tab === "movement" || tab === "listings") return;
     setLoading(true);
     try {
       switch (tab) {
@@ -114,6 +118,8 @@ export function ReportsPage() {
     { key: "stock_valuation", label: "Stock Valuation" },
     { key: "stock_taking", label: "Stock Taking A–Z" },
     { key: "sales", label: "Sales Summary" },
+    { key: "movement", label: "Daily / Weekly / Monthly" },
+    { key: "listings", label: "Chain Listings (24)" },
   ];
 
   return (
@@ -135,6 +141,9 @@ export function ReportsPage() {
       {loading && <div className={styles.loading}>Loading report…</div>}
 
       {/* ══ NEAR EXPIRY ═══════════════════════════════════════════════════════════ */}
+      {activeTab === "movement" && <StockMovementReport />}
+      {activeTab === "listings" && <ListingsReport />}
+
       {activeTab === "near_expiry" && !loading && (
         <>
           <div className={styles.reportToolbar}>

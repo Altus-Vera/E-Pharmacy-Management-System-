@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -37,6 +38,7 @@ public class ReportController(AppDbContext db) : ControllerBase
         });
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpGet("sales")]
     public async Task<IActionResult> SalesReport([FromQuery] DateTime? from, [FromQuery] DateTime? to)
     {
@@ -49,6 +51,7 @@ public class ReportController(AppDbContext db) : ControllerBase
         return Ok(invoices);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpGet("stock")]
     public async Task<IActionResult> StockReport()
     {
@@ -56,6 +59,7 @@ public class ReportController(AppDbContext db) : ControllerBase
         return Ok(drugs);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpGet("purchase")]
     public async Task<IActionResult> PurchaseReport([FromQuery] DateTime? from, [FromQuery] DateTime? to)
     {

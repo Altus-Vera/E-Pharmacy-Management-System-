@@ -18,7 +18,7 @@ export interface ReceiptData {
   footer?: string;
 }
 
-const STORE_NAME = "E-Pharmacy";
+const STORE_NAME = "AltusVera";
 const STORE_SUB = "National Medicines Regulatory Authority Licensed";
 
 function esc(s: string | number | null | undefined): string {

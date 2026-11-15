@@ -78,7 +78,8 @@ export interface CustomerCreate {
 export interface Doctor {
   id: number;
   name: string;
-  slmc_registration_number: string;
+  slmc_reg_no: string | null;
+  discount_rate: number;
   specialization: string | null;
   contact_number: string | null;
   email: string | null;
@@ -89,7 +90,7 @@ export interface Doctor {
 
 export interface DoctorCreate {
   name: string;
-  slmc_registration_number: string;
+  slmc_reg_no: string;
   specialization?: string;
   contact_number?: string;
   email?: string;
@@ -212,6 +213,9 @@ export interface InvoiceCreate {
   total_amount: number;
   payment_mode: "cash" | "card" | "other";
   notes?: string;
+  pharmacist_verified?: boolean;
+  verifier_username?: string;
+  verifier_password?: string;
 }
 
 export type SalesReturnReason = "damaged" | "expired" | "wrong_item" | "patient_refusal" | "other";

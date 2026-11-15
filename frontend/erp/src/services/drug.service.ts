@@ -13,7 +13,12 @@ export const drugService = {
   },
 
   async getLowStock(): Promise<Drug[]> {
-    const res = await api.get<Drug[]>("/drugs/low-stock");
+    const res = await api.get<Drug[]>("/drugs", { params: { lowStock: true } });
+    return res.data;
+  },
+
+  async getExpiringSoon(): Promise<Drug[]> {
+    const res = await api.get<Drug[]>("/drugs", { params: { expiringSoon: true } });
     return res.data;
   },
 

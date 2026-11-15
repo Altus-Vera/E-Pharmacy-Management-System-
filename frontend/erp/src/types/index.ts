@@ -115,6 +115,8 @@ export interface DrugCreate {
   is_narcotic?: boolean;
   category_id?: number;
   supplier_id?: number;
+  is_active?: boolean;
+  price_change_reason?: string;
 }
 
 // ─── Supplier ─────────────────────────────────────────────────────────────────
@@ -122,21 +124,18 @@ export interface DrugCreate {
 export interface Supplier {
   id: number;
   name: string;
-  contact_person: string | null;
-  phone: string | null;
-  email: string | null;
   address: string | null;
-  is_active: boolean;
+  contact_number: string | null;
+  special_remarks: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface SupplierCreate {
   name: string;
-  contact_person?: string;
-  phone?: string;
-  email?: string;
   address?: string;
+  contact_number?: string;
+  special_remarks?: string;
 }
 
 // ─── Purchase Order ───────────────────────────────────────────────────────────
@@ -147,15 +146,19 @@ export interface PurchaseOrderItem {
   quantity_ordered: number;
   quantity_received: number;
   unit_cost: number;
-  is_free_goods: boolean;
+  drug?: { id: number; brand_name: string; item_code: string } | null;
 }
 
 export interface PurchaseOrder {
   id: number;
   order_number: string;
   supplier_id: number;
+  supplier?: Supplier | null;
+  order_date: string;
+  expected_delivery_date: string | null;
+  received_date: string | null;
   status: PurchaseOrderStatus;
-  notes: string | null;
+  remarks: string | null;
   items: PurchaseOrderItem[];
   created_by_user_id: number | null;
   created_at: string;
@@ -166,12 +169,13 @@ export interface PurchaseOrderItemCreate {
   drug_id: number;
   quantity_ordered: number;
   unit_cost: number;
-  is_free_goods?: boolean;
 }
 
 export interface PurchaseOrderCreate {
   supplier_id: number;
-  notes?: string;
+  order_date: string;
+  expected_delivery_date?: string | null;
+  remarks?: string;
   items: PurchaseOrderItemCreate[];
 }
 
@@ -238,6 +242,7 @@ export interface Doctor {
   hospital_clinic: string | null;
   contact_number: string | null;
   email: string | null;
+  discount_rate: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -250,6 +255,7 @@ export interface DoctorCreate {
   hospital_clinic?: string;
   contact_number?: string;
   email?: string;
+  discount_rate?: number;
 }
 
 // ─── Prescription ─────────────────────────────────────────────────────────────

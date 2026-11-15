@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -12,10 +13,12 @@ namespace AltuVera.Pharmacy.API.Controllers;
 [Authorize]
 public class UserController(AppDbContext db) : ControllerBase
 {
+    [Authorize(Roles = R.UserAdmin)]
     [HttpGet]
     public async Task<IActionResult> List() =>
         Ok(await db.Users.OrderBy(u => u.Name).ToListAsync());
 
+    [Authorize(Roles = R.UserAdmin)]
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
@@ -23,6 +26,7 @@ public class UserController(AppDbContext db) : ControllerBase
         return u is null ? NotFound() : Ok(u);
     }
 
+    [Authorize(Roles = R.UserAdmin)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] UserCreateRequest req)
     {
@@ -47,6 +51,7 @@ public class UserController(AppDbContext db) : ControllerBase
         return Ok(user);
     }
 
+    [Authorize(Roles = R.UserAdmin)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UserUpdateRequest req)
     {

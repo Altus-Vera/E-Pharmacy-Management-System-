@@ -1,3 +1,4 @@
+using AltuVera.Pharmacy.API.Security;
 using AltuVera.Pharmacy.Domain.Entities;
 using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
@@ -15,6 +16,7 @@ public class OutletController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List() => Ok(await db.Outlets.OrderBy(o => o.Name).ToListAsync());
 
+    [Authorize(Roles = R.Manager)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] OutletRequest req)
     {
@@ -24,6 +26,7 @@ public class OutletController(AppDbContext db) : ControllerBase
         return Ok(outlet);
     }
 
+    [Authorize(Roles = R.Manager)]
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] OutletRequest req)
     {
@@ -46,6 +49,7 @@ public class StockTransferController(AppDbContext db) : ControllerBase
         Ok(await db.StockTransfers.Include(t => t.FromOutlet).Include(t => t.ToOutlet).Include(t => t.Drug)
             .OrderByDescending(t => t.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] TransferRequest req)
     {
@@ -62,6 +66,7 @@ public class StockTransferController(AppDbContext db) : ControllerBase
         return Ok(transfer);
     }
 
+    [Authorize(Roles = R.Stock)]
     [HttpPatch("{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] StatusRequest req)
     {
@@ -94,6 +99,7 @@ public class StockAdjustmentController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> List() =>
         Ok(await db.StockAdjustments.Include(a => a.Drug).OrderByDescending(a => a.CreatedAt).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AdjustmentRequest req)
     {
@@ -129,6 +135,21 @@ public class StockLocationController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List() => Ok(await db.StockLocations.OrderBy(l => l.Name).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] LocationUpdateRequest req)
+    {
+        var loc = await db.StockLocations.FindAsync(id);
+        if (loc is null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(req.Name)) loc.Name = req.Name;
+        if (req.Description is not null) loc.Description = req.Description;
+        if (req.IsActive is not null) loc.IsActive = req.IsActive.Value;
+        loc.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(loc);
+    }
+
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] LocationRequest req)
     {
@@ -147,6 +168,21 @@ public class UomController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List() => Ok(await db.UnitsOfMeasure.OrderBy(u => u.Name).ToListAsync());
 
+    [Authorize(Roles = R.Stock)]
+    [HttpPatch("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] UomUpdateRequest req)
+    {
+        var uom = await db.UnitsOfMeasure.FindAsync(id);
+        if (uom is null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(req.Name)) uom.Name = req.Name;
+        if (req.Abbreviation is not null) uom.Abbreviation = req.Abbreviation;
+        if (req.IsActive is not null) uom.IsActive = req.IsActive.Value;
+        uom.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(uom);
+    }
+
+    [Authorize(Roles = R.Stock)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] UomRequest req)
     {
@@ -162,3 +198,20 @@ public record TransferRequest(int FromOutletId, int ToOutletId, int DrugId, int 
 public record AdjustmentRequest(int DrugId, int Quantity, string AdjustmentType, string Reason);
 public record LocationRequest(string Name, string? Description);
 public record UomRequest(string Name, string? Abbreviation);
+public record LocationUpdateRequest(string? Name, string? Description, bool? IsActive);
+public record UomUpdateRequest(string? Name, string? Abbreviation, bool? IsActive);
+
+[ApiController]
+[Route("api/stock-movements")]
+[Authorize]
+public class StockMovementController(AppDbContext db) : ControllerBase
+{
+    // Read-only stock ledger, optionally filtered by drug.
+    [HttpGet]
+    public async Task<IActionResult> List([FromQuery] int? drugId, [FromQuery] int take = 200)
+    {
+        var q = db.StockMovements.AsQueryable();
+        if (drugId is not null) q = q.Where(m => m.DrugId == drugId);
+        return Ok(await q.OrderByDescending(m => m.CreatedAt).Take(Math.Clamp(take, 1, 1000)).ToListAsync());
+    }
+}
