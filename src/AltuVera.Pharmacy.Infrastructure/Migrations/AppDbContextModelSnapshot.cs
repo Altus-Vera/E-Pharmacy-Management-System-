@@ -247,6 +247,14 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("nvarchar(200)")
                         .HasColumnName("active_ingredient");
 
+                    b.Property<string>("BaseUnit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("unit")
+                        .HasColumnName("base_unit");
+
                     b.Property<string>("BatchNumber")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
@@ -262,11 +270,26 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("category_id");
 
+                    b.Property<decimal?>("ContentPerUnit")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("content_per_unit");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<decimal?>("DefaultDose")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)")
+                        .HasColumnName("default_dose");
+
+                    b.Property<string>("DefaultFrequency")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("default_frequency");
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)")
@@ -282,6 +305,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("dosage_form");
+
+                    b.Property<string>("DoseUnit")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("dose_unit");
 
                     b.Property<DateOnly?>("ExpiryDate")
                         .HasColumnType("date")
@@ -327,6 +355,23 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("manufactured_date");
 
+                    b.Property<int?>("MaxDays")
+                        .HasColumnType("int")
+                        .HasColumnName("max_days");
+
+                    b.Property<int?>("MinDays")
+                        .HasColumnType("int")
+                        .HasColumnName("min_days");
+
+                    b.Property<int?>("MinLooseQty")
+                        .HasColumnType("int")
+                        .HasColumnName("min_loose_qty");
+
+                    b.Property<string>("NonLooseReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("non_loose_reason");
+
                     b.Property<int?>("PackSize")
                         .HasColumnType("int")
                         .HasColumnName("pack_size");
@@ -338,6 +383,14 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Property<int>("ReorderLevel")
                         .HasColumnType("int")
                         .HasColumnName("reorder_level");
+
+                    b.Property<string>("SellMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("loose")
+                        .HasColumnName("sell_mode");
 
                     b.Property<string>("StorageRequirements")
                         .HasMaxLength(300)
@@ -357,6 +410,10 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("unit_price");
+
+                    b.Property<int?>("UnitsPerStrip")
+                        .HasColumnType("int")
+                        .HasColumnName("units_per_strip");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -409,6 +466,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Property<DateOnly?>("ManufacturedDate")
                         .HasColumnType("date")
                         .HasColumnName("manufactured_date");
+
+                    b.Property<decimal?>("PackSellingPrice")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("pack_selling_price");
 
                     b.Property<int>("QuantityReceived")
                         .HasColumnType("int")
@@ -483,6 +545,56 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("drug_categories", (string)null);
+                });
+
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.FrequencyCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.Property<decimal?>("TimesPerDay")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("times_per_day");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("frequency_codes", (string)null);
                 });
 
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.GoodsReceipt", b =>
@@ -577,6 +689,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Property<bool>("IsFreeGoods")
                         .HasColumnType("bit")
                         .HasColumnName("is_free_goods");
+
+                    b.Property<decimal?>("PackSellingPrice")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("pack_selling_price");
 
                     b.Property<int>("QuantityReceived")
                         .HasColumnType("int")
@@ -726,6 +843,15 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("Days")
+                        .HasColumnType("int")
+                        .HasColumnName("days");
+
+                    b.Property<string>("Directions")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("directions");
+
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(10, 2)
                         .HasColumnType("decimal(10,2)")
@@ -736,6 +862,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("discount_rate");
 
+                    b.Property<decimal?>("Dose")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)")
+                        .HasColumnName("dose");
+
                     b.Property<int?>("DrugBatchId")
                         .HasColumnType("int")
                         .HasColumnName("drug_batch_id");
@@ -743,6 +874,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.Property<int>("DrugId")
                         .HasColumnType("int")
                         .HasColumnName("drug_id");
+
+                    b.Property<string>("FrequencyCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("frequency_code");
 
                     b.Property<int>("InvoiceId")
                         .HasColumnType("int")
@@ -757,10 +893,24 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("quantity");
 
+                    b.Property<string>("SaleUnit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("unit")
+                        .HasColumnName("sale_unit");
+
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(10, 2)
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("unit_price");
+
+                    b.Property<int>("UnitsPerSaleUnit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1)
+                        .HasColumnName("units_per_sale_unit");
 
                     b.HasKey("Id");
 

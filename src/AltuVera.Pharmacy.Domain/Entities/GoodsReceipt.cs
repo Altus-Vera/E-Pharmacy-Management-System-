@@ -28,6 +28,7 @@ public class GoodsReceiptItem
     public string? BatchNumber { get; set; }
     public DateOnly? ExpiryDate { get; set; }
     public decimal? SellingPrice { get; set; }
+    public decimal? PackSellingPrice { get; set; }
     public int? DrugBatchId { get; set; }
 
     public GoodsReceipt GoodsReceipt { get; set; } = null!;

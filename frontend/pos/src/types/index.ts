@@ -116,6 +116,18 @@ export interface Drug {
   discount: number;
   quantity: number;
   pack_size: number | null;
+  /** tablet, capsule, bottle… — stock and unit price are counted in this */
+  base_unit?: string;
+  sell_mode?: SellMode;
+  units_per_strip?: number | null;
+  non_loose_reason?: string | null;
+  min_loose_qty?: number | null;
+  dose_unit?: string | null;
+  content_per_unit?: number | null;
+  default_dose?: number | null;
+  default_frequency?: string | null;
+  max_days?: number | null;
+  min_days?: number | null;
   low_stock_threshold: number;
   reorder_level: number;
   is_prescription_only: boolean;
@@ -131,6 +143,23 @@ export interface Drug {
   batches?: DrugBatch[];
 }
 
+export type SellMode = "loose" | "strip" | "pack";
+export type SaleUnit = "unit" | "strip" | "pack";
+
+export interface FrequencyCode { id: number; code: string; description: string; times_per_day: number | null; sort_order: number; is_active: boolean }
+
+/** One medicine's "how much for N days" answer from POST /dispense/calculate. */
+export interface CalcLine {
+  drug_batch_id: number; batch_number: string | null; expiry_date: string | null;
+  sale_unit: SaleUnit; units_per_sale_unit: number; quantity: number; unit_price: number; line_total: number; label: string;
+}
+export interface CalcResult {
+  drug_id: number; drug: string; sell_mode: SellMode; non_loose_reason: string | null; base_unit: string;
+  dose: number; dose_unit: string | null; frequency_code: string; times_per_day: number; days: number;
+  units_needed: number; units_supplied: number; extra_units: number; total: number; directions: string;
+  lines: CalcLine[]; warnings: string[]; available: boolean;
+}
+
 export interface DrugBatch {
   id: number;
   drug_id: number;
@@ -141,6 +170,7 @@ export interface DrugBatch {
   quantity_remaining: number;
   unit_cost: number | null;
   selling_price: number;
+  pack_selling_price?: number | null;
   received_at: string;
   source: string;
 }
@@ -211,6 +241,11 @@ export interface Invoice {
 export interface InvoiceItemCreate {
   drug_id: number;
   drug_batch_id?: number;
+  sale_unit?: SaleUnit;
+  dose?: number;
+  frequency_code?: string;
+  days?: number;
+  directions?: string;
   quantity: number;
   unit_price: number;
   discount_rate: number;
@@ -254,6 +289,14 @@ export interface CartItem {
   drug: Drug;
   /** Batch this line sells from (FIFO); its price is the line's unit price. */
   batch: DrugBatch | null;
+  /** unit | strip | pack — quantity and unit_price are in this unit */
+  sale_unit: SaleUnit;
+  /** base units in one sale unit (stock moved = quantity × this) */
+  units_per: number;
+  dose?: number;
+  frequency_code?: string;
+  days?: number;
+  directions?: string;
   quantity: number;
   unit_price: number;
   discount_rate: number;

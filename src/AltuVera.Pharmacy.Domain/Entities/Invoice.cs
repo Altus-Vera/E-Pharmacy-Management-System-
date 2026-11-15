@@ -42,6 +42,14 @@ public class InvoiceItem
     public decimal DiscountAmount { get; set; }
     public decimal LineTotal { get; set; }
     public int? DrugBatchId { get; set; }
+    /// <summary>unit | strip | pack — Quantity and UnitPrice are in this unit.</summary>
+    public string SaleUnit { get; set; } = "unit";
+    /// <summary>Base units in one sale unit (stock moved = Quantity × this).</summary>
+    public int UnitsPerSaleUnit { get; set; } = 1;
+    public decimal? Dose { get; set; }
+    public string? FrequencyCode { get; set; }
+    public int? Days { get; set; }
+    public string? Directions { get; set; }
 
     public Invoice Invoice { get; set; } = null!;
     public Drug Drug { get; set; } = null!;

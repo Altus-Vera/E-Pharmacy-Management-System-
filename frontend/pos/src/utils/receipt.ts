@@ -4,6 +4,8 @@ export interface ReceiptLine {
   name: string;
   sub?: string;
   flag?: string;          // "Rx" | "HA" | "N" — regulatory class printed next to the item
+  unit?: string;          // sale unit, e.g. "strip × 10", "tablet"
+  directions?: string;    // e.g. "1 tablet, three times a day, for 3 days"
   qty: number;
   price: number;
   disc: number;           // discount rate %
@@ -72,6 +74,8 @@ export function cartToLines(items: CartItem[]): ReceiptLine[] {
       (i.batch?.expiry_date ?? i.drug.expiry_date) && `Exp ${(i.batch?.expiry_date ?? i.drug.expiry_date)!.slice(0, 7)}`]
       .filter(Boolean).join(" | "),
     flag: flagOf(i.drug),
+    unit: i.sale_unit === "unit" ? (i.drug.base_unit || undefined) : i.sale_unit === "strip" ? `strip×${i.units_per}` : i.units_per > 1 ? `pack×${i.units_per}` : (i.drug.base_unit || undefined),
+    directions: i.directions,
     qty: i.quantity,
     price: i.unit_price,
     disc: i.discount_rate,
@@ -98,8 +102,8 @@ export function renderReceipt(d: ReceiptData): string {
   const hasFlags = d.lines.some((l) => l.flag);
   const items = d.lines.map((l, i) => `
     <tr class="it"><td class="no">${i + 1}</td><td colspan="4"><b>${esc(l.name)}</b>${l.flag ? ` <span class="fl">${l.flag}</span>` : ""}
-      ${l.sub ? `<div class="s">${esc(l.sub)}</div>` : ""}</td></tr>
-    <tr><td></td><td class="r">${l.qty}</td><td class="r">${money(l.price)}</td><td class="r">${l.disc ? `${l.disc}%` : "-"}</td><td class="r">${money(l.total)}</td></tr>`).join("");
+      ${l.sub ? `<div class="s">${esc(l.sub)}</div>` : ""}${l.directions ? `<div class="dir">&#8478; ${esc(l.directions)}</div>` : ""}</td></tr>
+    <tr><td></td><td class="r">${l.qty}${l.unit ? ` <span class="s">${esc(l.unit)}</span>` : ""}</td><td class="r">${money(l.price)}</td><td class="r">${l.disc ? `${l.disc}%` : "-"}</td><td class="r">${money(l.total)}</td></tr>`).join("");
   const pay = d.payment;
   const saved = d.discount > 0.004 ? d.discount : 0;
 
@@ -119,6 +123,7 @@ export function renderReceipt(d: ReceiptData): string {
     .grand td { font-size: 15px; font-weight: 700; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 3px 0; }
     .saved { text-align:center; font-weight:700; border: 1px solid #000; padding: 2px; margin: 5px 0; }
     .rp { text-align:center; font-weight:700; font-size: 12px; }
+    .dir { font-size: 10px; font-weight: 700; margin-top: 1px; }
   </style></head><body>
     <div class="store">${esc(STORE.name)}</div>
     <div class="c s">${[esc(STORE.tagline), STORE.address && esc(STORE.address), STORE.phone && `Tel: ${esc(STORE.phone)}`, STORE.regNo && `Pharmacy Reg. No: ${esc(STORE.regNo)}`].filter(Boolean).join("<br>")}</div>

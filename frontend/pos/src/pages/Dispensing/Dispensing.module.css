@@ -1634,3 +1634,10 @@
 /* Batch (FIFO) hints */
 .batchLeft { font-size: 0.68rem; color: #64748b; }
 .nextBatch { font-size: 0.68rem; font-weight: 700; color: #b45309; margin-top: 2px; }
+
+/* Sale unit + days calculator in the tray */
+.unitSelect { padding: 3px 4px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 0.75rem; font-weight: 600; background: #fff; max-width: 110px; }
+.unitText { font-size: 0.75rem; font-weight: 600; color: #334155; }
+.itemDirections { font-size: 0.72rem; font-weight: 700; color: #166534; margin-top: 2px; }
+.daysBtn { margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid #166534; background: #fff; color: #166534; font-size: 0.65rem; font-weight: 800; cursor: pointer; }
+.daysBtn:hover { background: #166534; color: #fff; }

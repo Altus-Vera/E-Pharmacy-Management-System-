@@ -17,8 +17,17 @@ import styles from "./Inventory.module.css";
 
 interface Batch {
   id: number; batch_number: string | null; expiry_date: string | null; quantity_received: number; quantity_remaining: number;
-  unit_cost: number | null; selling_price: number; received_at: string; source: string; is_expired: boolean;
+  unit_cost: number | null; selling_price: number; pack_selling_price: number | null; received_at: string; source: string; is_expired: boolean;
 }
+interface FreqCode { id: number; code: string; description: string; times_per_day: number | null; is_active: boolean }
+const SELL_MODES = [
+  { v: "loose", label: "Loose — any number of units" },
+  { v: "strip", label: "Strip only — whole strips/cards" },
+  { v: "pack", label: "Pack only — whole packs/bottles/tubes" },
+] as const;
+const REASONS = ["Sealed bottle", "Tube / inhaler / drops", "Cold chain — keep refrigerated", "Full course must be supplied", "Regulatory control", "Moisture / light sensitive blister"];
+const DEFAULT_UNIT: Record<string, string> = { tablet: "tablet", capsule: "capsule", syrup: "bottle", vial: "vial", other: "unit" };
+
 interface PriceChange { id: number; old_price: number; new_price: number; reason: string | null; created_at: string }
 
 const emptyForm: DrugCreate = {
@@ -41,12 +50,15 @@ export function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [history, setHistory] = useState<PriceChange[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [freqs, setFreqs] = useState<FreqCode[]>([]);
+  const [packPrice, setPackPrice] = useState<Record<number, string>>({});
   const [batchPrice, setBatchPrice] = useState<Record<number, string>>({});
   const [batchMsg, setBatchMsg] = useState("");
   const user = useAuthStore((st) => st.user);
   const manager = isManager(user?.user_type);
 
   useEffect(() => { supplierService.getAll().then(setSuppliers).catch(() => undefined); }, []);
+  useEffect(() => { api.get<FreqCode[]>("/frequency-codes").then((r) => setFreqs(r.data)).catch(() => undefined); }, []);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -79,6 +91,10 @@ export function InventoryPage() {
       manufactured_date: d.manufactured_date ?? undefined, pack_size: d.pack_size ?? undefined,
       category_id: d.category_id ?? undefined, supplier_id: d.supplier_id ?? undefined,
       is_active: d.is_active, price_change_reason: "",
+      base_unit: d.base_unit ?? DEFAULT_UNIT[d.dosage_form] ?? "unit", sell_mode: d.sell_mode ?? "loose",
+      units_per_strip: d.units_per_strip ?? null, non_loose_reason: d.non_loose_reason ?? "", min_loose_qty: d.min_loose_qty ?? null,
+      dose_unit: d.dose_unit ?? "", content_per_unit: d.content_per_unit ?? null, default_dose: d.default_dose ?? null,
+      default_frequency: d.default_frequency ?? "", max_days: d.max_days ?? null, min_days: d.min_days ?? null,
     });
     setError(""); setHistory([]); setBatches([]); setBatchPrice({}); setBatchMsg("");
     loadBatches(d.id);
@@ -107,16 +123,37 @@ export function InventoryPage() {
     } catch (e) { setBatchMsg(apiError(e)); }
   }
 
+  async function saveBatchPackPrice(b: Batch) {
+    const v = parseFloat(packPrice[b.id]);
+    if (!Number.isFinite(v) || v < 0) { setBatchMsg("Enter a valid pack price (0 = units × unit price)."); return; }
+    try {
+      await api.patch(`/drug-batches/${b.id}`, { pack_selling_price: v });
+      setBatchMsg(v > 0 ? `Pack price for batch ${b.batch_number ?? b.id} set to ${formatCurrency(v)}.` : "Pack price cleared — packs sell at units × unit price.");
+      setPackPrice((p) => { const n = { ...p }; delete n[b.id]; return n; });
+      if (editTarget) loadBatches(editTarget.id);
+    } catch (e) { setBatchMsg(apiError(e)); }
+  }
+
   async function handleSave() {
     if (!form.item_code.trim() || !form.brand_name.trim() || !form.generic_name.trim()) { setError("Item code, brand name and generic name are required."); return; }
     if (form.is_narcotic && !form.is_prescription_only) { setError("Narcotic drugs must also be flagged POM."); return; }
+    if (form.sell_mode === "strip" && !form.units_per_strip) { setError("Set units per strip for a strip-only drug."); return; }
+    if (form.sell_mode !== "loose" && !form.non_loose_reason?.trim()) { setError("Give the reason it cannot be sold loose — the cashier shows it to the customer."); return; }
+    // empty optional fields are sent as 0 / "" so the server clears them (null means "unchanged")
+    const payload: DrugCreate = {
+      ...form,
+      units_per_strip: form.units_per_strip ?? 0, min_loose_qty: form.min_loose_qty ?? 0, content_per_unit: form.content_per_unit ?? 0,
+      default_dose: form.default_dose ?? 0, max_days: form.max_days ?? 0, min_days: form.min_days ?? 0,
+      non_loose_reason: form.non_loose_reason ?? "", dose_unit: form.dose_unit ?? "", default_frequency: form.default_frequency ?? "",
+      base_unit: form.base_unit || DEFAULT_UNIT[form.dosage_form] || "unit", sell_mode: form.sell_mode ?? "loose",
+    };
     setSaving(true); setError("");
     try {
       if (editTarget) {
-        const updated = await drugService.update(editTarget.id, form);
+        const updated = await drugService.update(editTarget.id, payload);
         setDrugs((prev) => prev.map((d) => d.id === updated.id ? updated : d));
       } else {
-        const created = await drugService.create(form);
+        const created = await drugService.create(payload);
         setDrugs((prev) => [created, ...prev]);
       }
       setModalOpen(false);
@@ -198,7 +235,7 @@ export function InventoryPage() {
           {editTarget && manager && form.unit_price !== editTarget.unit_price && (
             <Input label="Reason for price change" value={form.price_change_reason ?? ""} onChange={(e) => f("price_change_reason", e.target.value)} placeholder="e.g. Supplier price increase" />
           )}
-          <Input label="Pack Size" type="number" min={1} value={form.pack_size ?? ""} onChange={(e) => f("pack_size", parseInt(e.target.value) || undefined)} placeholder="Units per pack" />
+
           <Input label="Quantity" type="number" min={0} value={form.quantity} onChange={(e) => f("quantity", parseInt(e.target.value) || 0)} required />
           <Input label="Reorder Level" type="number" min={0} value={form.reorder_level ?? ""} onChange={(e) => f("reorder_level", parseInt(e.target.value) || 0)} />
           <Input label="Low Stock Threshold" type="number" min={0} value={form.low_stock_threshold ?? ""} onChange={(e) => f("low_stock_threshold", parseInt(e.target.value) || 0)} />
@@ -231,6 +268,46 @@ export function InventoryPage() {
             </div>
           </div>
         </div>
+        <div className={styles.sellBox}>
+          <div className={styles.sellTitle}>Selling &amp; dosing <span>— how the counter sells it and what the days calculator uses</span></div>
+          <div className={styles.sellGrid}>
+            <Input label="Base unit (stock &amp; price counted in)" value={form.base_unit ?? ""} onChange={(e) => f("base_unit", e.target.value)} placeholder="tablet, capsule, bottle, tube…" />
+            <div>
+              <label className={styles.sellLabel}>Selling rule</label>
+              <select className={styles.sellSelect} value={form.sell_mode ?? "loose"} onChange={(e) => f("sell_mode", e.target.value)}>
+                {SELL_MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}
+              </select>
+            </div>
+            <Input label={`Units per strip${form.sell_mode === "strip" ? " *" : ""}`} type="number" min={0} value={form.units_per_strip ?? ""} onChange={(e) => f("units_per_strip", parseInt(e.target.value) || null)} placeholder="e.g. 10" />
+            <Input label="Units per pack" type="number" min={0} value={form.pack_size ?? ""} onChange={(e) => f("pack_size", parseInt(e.target.value) || undefined)} placeholder="e.g. 100 (box), 1 (bottle)" />
+            {form.sell_mode === "loose"
+              ? <Input label="Min. loose quantity" type="number" min={0} value={form.min_loose_qty ?? ""} onChange={(e) => f("min_loose_qty", parseInt(e.target.value) || null)} placeholder="optional, e.g. 2" />
+              : <div>
+                  <label className={styles.sellLabel}>Why not loose *</label>
+                  <input className={styles.sellSelect} list="nonLooseReasons" value={form.non_loose_reason ?? ""} onChange={(e) => f("non_loose_reason", e.target.value)} placeholder="Shown to the cashier" />
+                  <datalist id="nonLooseReasons">{REASONS.map((r) => <option key={r} value={r} />)}</datalist>
+                </div>}
+            <Input label="Dose unit (if not the base unit)" value={form.dose_unit ?? ""} onChange={(e) => f("dose_unit", e.target.value)} placeholder="ml, puff, drop…" />
+            {form.dose_unit
+              ? <Input label={`${form.dose_unit} per ${form.base_unit || "unit"}`} type="number" min={0} step={0.01} value={form.content_per_unit ?? ""} onChange={(e) => f("content_per_unit", parseFloat(e.target.value) || null)} placeholder="e.g. 100 ml per bottle" />
+              : <div />}
+            <Input label={`Usual dose (${form.dose_unit || form.base_unit || "units"})`} type="number" min={0} step={0.25} value={form.default_dose ?? ""} onChange={(e) => f("default_dose", parseFloat(e.target.value) || null)} placeholder="e.g. 1" />
+            <div>
+              <label className={styles.sellLabel}>Usual frequency</label>
+              <select className={styles.sellSelect} value={form.default_frequency ?? ""} onChange={(e) => f("default_frequency", e.target.value)}>
+                <option value="">— none —</option>
+                {freqs.map((q) => <option key={q.code} value={q.code}>{q.code} · {q.description}</option>)}
+              </select>
+            </div>
+            <Input label="Min. days (full course)" type="number" min={0} value={form.min_days ?? ""} onChange={(e) => f("min_days", parseInt(e.target.value) || null)} placeholder="e.g. 5 for antibiotics" />
+            <Input label="Max. days per sale" type="number" min={0} value={form.max_days ?? ""} onChange={(e) => f("max_days", parseInt(e.target.value) || null)} placeholder="optional" />
+          </div>
+          <div className={styles.sellHint}>
+            Unit price is per {form.base_unit || "unit"}.
+            {form.units_per_strip ? ` A strip = ${form.units_per_strip} × ${formatCurrency(form.unit_price)} = ${formatCurrency(form.units_per_strip * form.unit_price)}.` : ""}
+            {form.pack_size && form.pack_size > 1 ? ` A pack = ${form.pack_size} units (set a cheaper pack price per batch below if needed).` : ""}
+          </div>
+        </div>
         {editTarget && (
           <div style={{ marginTop: "var(--space-4)" }}>
             <div style={{ fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
@@ -241,7 +318,7 @@ export function InventoryPage() {
                 <thead><tr style={{ background: "var(--color-surface-raised)" }}>
                   <th style={{ textAlign: "left", padding: 6 }}>#</th><th style={{ textAlign: "left", padding: 6 }}>Batch</th><th style={{ textAlign: "left", padding: 6 }}>Expiry</th>
                   <th style={{ textAlign: "left", padding: 6 }}>Received</th><th style={{ textAlign: "right", padding: 6 }}>Left / Recv</th>
-                  <th style={{ textAlign: "right", padding: 6 }}>Cost</th><th style={{ textAlign: "right", padding: 6 }}>Selling Price</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>Cost</th><th style={{ textAlign: "right", padding: 6 }}>Unit Price</th><th style={{ textAlign: "right", padding: 6 }}>Pack Price</th>
                 </tr></thead>
                 <tbody>{batches.map((b, i) => (
                   <tr key={b.id} style={{ borderBottom: "1px solid var(--color-border)", background: i === 0 && !b.is_expired ? "var(--color-primary-light)" : undefined }}>
@@ -260,6 +337,19 @@ export function InventoryPage() {
                             <Button size="sm" onClick={() => saveBatchPrice(b)}>Save</Button>}
                         </span>
                       ) : <strong>{formatCurrency(b.selling_price)}</strong>}
+                    </td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
+                      {manager && (form.pack_size ?? 0) > 1 ? (
+                        <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                          <input type="number" step="0.01" min={0} style={{ width: 90, textAlign: "right", padding: "3px 6px" }}
+                            placeholder={formatCurrency(b.selling_price * (form.pack_size ?? 1))}
+                            value={packPrice[b.id] ?? (b.pack_selling_price != null ? String(b.pack_selling_price) : "")}
+                            onChange={(e) => setPackPrice((p) => ({ ...p, [b.id]: e.target.value }))} />
+                          {packPrice[b.id] !== undefined && <Button size="sm" onClick={() => saveBatchPackPrice(b)}>Save</Button>}
+                        </span>
+                      ) : (form.pack_size ?? 0) > 1
+                        ? formatCurrency(b.pack_selling_price ?? b.selling_price * (form.pack_size ?? 1))
+                        : "—"}
                     </td>
                   </tr>))}</tbody>
               </table>

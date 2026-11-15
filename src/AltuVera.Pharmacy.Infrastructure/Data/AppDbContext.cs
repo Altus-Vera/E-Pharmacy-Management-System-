@@ -9,6 +9,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
     public DbSet<Drug> Drugs => Set<Drug>();
     public DbSet<DrugBatch> DrugBatches => Set<DrugBatch>();
+    public DbSet<FrequencyCode> FrequencyCodes => Set<FrequencyCode>();
     public DbSet<DrugCategory> DrugCategories => Set<DrugCategory>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Doctor> Doctors => Set<Doctor>();
@@ -97,6 +98,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Discount).HasColumnName("discount").HasPrecision(5, 2);
             e.Property(x => x.Quantity).HasColumnName("quantity");
             e.Property(x => x.PackSize).HasColumnName("pack_size");
+            e.Property(x => x.BaseUnit).HasColumnName("base_unit").HasMaxLength(20).HasDefaultValue("unit");
+            e.Property(x => x.UnitsPerStrip).HasColumnName("units_per_strip");
+            e.Property(x => x.SellMode).HasColumnName("sell_mode").HasMaxLength(10).HasDefaultValue("loose");
+            e.Property(x => x.NonLooseReason).HasColumnName("non_loose_reason").HasMaxLength(200);
+            e.Property(x => x.MinLooseQty).HasColumnName("min_loose_qty");
+            e.Property(x => x.DoseUnit).HasColumnName("dose_unit").HasMaxLength(20);
+            e.Property(x => x.ContentPerUnit).HasColumnName("content_per_unit").HasPrecision(10, 2);
+            e.Property(x => x.DefaultDose).HasColumnName("default_dose").HasPrecision(8, 2);
+            e.Property(x => x.DefaultFrequency).HasColumnName("default_frequency").HasMaxLength(20);
+            e.Property(x => x.MaxDays).HasColumnName("max_days");
+            e.Property(x => x.MinDays).HasColumnName("min_days");
             e.Property(x => x.LowStockThreshold).HasColumnName("low_stock_threshold");
             e.Property(x => x.ReorderLevel).HasColumnName("reorder_level");
             e.Property(x => x.IsPrescriptionOnly).HasColumnName("is_prescription_only");
@@ -221,6 +233,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Prescription).WithMany(p => p.Invoices).HasForeignKey(x => x.PrescriptionId).OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<FrequencyCode>(e =>
+        {
+            e.ToTable("frequency_codes");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Code).HasColumnName("code").HasMaxLength(20);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(100);
+            e.Property(x => x.TimesPerDay).HasColumnName("times_per_day").HasPrecision(5, 2);
+            e.Property(x => x.SortOrder).HasColumnName("sort_order");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.Code).IsUnique();
+        });
+
         modelBuilder.Entity<DrugBatch>(e =>
         {
             e.ToTable("drug_batches");
@@ -234,6 +261,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.QuantityRemaining).HasColumnName("quantity_remaining");
             e.Property(x => x.UnitCost).HasColumnName("unit_cost").HasPrecision(10, 2);
             e.Property(x => x.SellingPrice).HasColumnName("selling_price").HasPrecision(10, 2);
+            e.Property(x => x.PackSellingPrice).HasColumnName("pack_selling_price").HasPrecision(10, 2);
             e.Property(x => x.ReceivedAt).HasColumnName("received_at");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(20);
             e.Property(x => x.GoodsReceiptItemId).HasColumnName("goods_receipt_item_id");
@@ -256,6 +284,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.DiscountAmount).HasColumnName("discount_amount").HasPrecision(10, 2);
             e.Property(x => x.LineTotal).HasColumnName("line_total").HasPrecision(12, 2);
             e.Property(x => x.DrugBatchId).HasColumnName("drug_batch_id");
+            e.Property(x => x.SaleUnit).HasColumnName("sale_unit").HasMaxLength(10).HasDefaultValue("unit");
+            e.Property(x => x.UnitsPerSaleUnit).HasColumnName("units_per_sale_unit").HasDefaultValue(1);
+            e.Property(x => x.Dose).HasColumnName("dose").HasPrecision(8, 2);
+            e.Property(x => x.FrequencyCode).HasColumnName("frequency_code").HasMaxLength(20);
+            e.Property(x => x.Days).HasColumnName("days");
+            e.Property(x => x.Directions).HasColumnName("directions").HasMaxLength(200);
             e.HasOne(x => x.Invoice).WithMany(i => i.Items).HasForeignKey(x => x.InvoiceId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Drug).WithMany().HasForeignKey(x => x.DrugId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -326,6 +360,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.BatchNumber).HasColumnName("batch_number").HasMaxLength(50);
             e.Property(x => x.ExpiryDate).HasColumnName("expiry_date");
             e.Property(x => x.SellingPrice).HasColumnName("selling_price").HasPrecision(10, 2);
+            e.Property(x => x.PackSellingPrice).HasColumnName("pack_selling_price").HasPrecision(10, 2);
             e.Property(x => x.DrugBatchId).HasColumnName("drug_batch_id");
             e.HasOne(x => x.GoodsReceipt).WithMany(gr => gr.Items).HasForeignKey(x => x.GoodsReceiptId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Drug).WithMany().HasForeignKey(x => x.DrugId).OnDelete(DeleteBehavior.Restrict);

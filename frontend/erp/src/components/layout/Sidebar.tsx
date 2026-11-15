@@ -14,6 +14,7 @@ const navItems = [
   { to: "/stock-view", label: "Stock View", icon: "📦" },
   { to: "/stock-locations", label: "Stock Locations", icon: "🗄" },
   { to: "/uom", label: "Units of Measure", icon: "⚖" },
+  { to: "/dose-codes", label: "Dose Codes", icon: "⏱" },
   { section: "Procurement" },
   { to: "/suppliers", label: "Suppliers", icon: "🏭" },
   { to: "/purchase-requisitions", label: "Purchase Requisitions", icon: "📋" },

@@ -16,6 +16,8 @@ public class DrugBatch
     public int QuantityRemaining { get; set; }
     public decimal? UnitCost { get; set; }
     public decimal SellingPrice { get; set; }
+    /// <summary>Optional price for a full pack (may be lower than units × unit price). Null = units × unit price.</summary>
+    public decimal? PackSellingPrice { get; set; }
     public DateTime ReceivedAt { get; set; }
     public string Source { get; set; } = "GRN";          // Opening, GRN, Manual, Return
     public int? GoodsReceiptItemId { get; set; }

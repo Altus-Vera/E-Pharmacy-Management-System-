@@ -88,7 +88,7 @@ export function GoodsReceiptsPage() {
     try {
       await grnService.create({ ...form, items: items.map(i => ({
         drug_id: i.drug_id, quantity_received: i.quantity_received, unit_cost: i.unit_cost, is_free_goods: !!i.is_free_goods,
-        batch_number: i.batch_number?.trim(), expiry_date: i.expiry_date, selling_price: i.selling_price,
+        batch_number: i.batch_number?.trim(), expiry_date: i.expiry_date, selling_price: i.selling_price, pack_selling_price: i.pack_selling_price,
       })) });
       if (form.purchase_order_id) await purchaseOrderService.updateStatus(form.purchase_order_id, "received").catch(() => undefined);
       setModalOpen(false);
@@ -178,8 +178,10 @@ export function GoodsReceiptsPage() {
                 <div className={styles.batchRow}>
                   <Input label="Batch No *" value={item.batch_number ?? ""} onChange={e => updateItem(idx, "batch_number", e.target.value)} placeholder="As on pack" />
                   <Input label="Expiry *" type="date" min={today} value={item.expiry_date ?? ""} onChange={e => updateItem(idx, "expiry_date", e.target.value)} />
-                  <Input label="Selling Price (Rs.) *" type="number" step="0.01" min={0} value={item.selling_price ?? ""}
+                  <Input label="Unit Selling Price (Rs.) *" type="number" step="0.01" min={0} value={item.selling_price ?? ""}
                     onChange={e => updateItem(idx, "selling_price", e.target.value === "" ? undefined : parseFloat(e.target.value))} />
+                  <Input label="Pack Price (optional)" type="number" step="0.01" min={0} value={item.pack_selling_price ?? ""} placeholder="units × unit price"
+                    onChange={e => updateItem(idx, "pack_selling_price", e.target.value === "" ? undefined : parseFloat(e.target.value))} />
                   <div className={styles.priceHint}>
                     {item.current_price !== undefined && item.selling_price !== undefined && Math.abs(item.selling_price - item.current_price) > 0.004
                       ? <span className={styles.priceChanged}>Current stock sells at Rs. {item.current_price.toFixed(2)} — this batch will sell at Rs. {item.selling_price.toFixed(2)} once older stock is sold (FIFO)</span>

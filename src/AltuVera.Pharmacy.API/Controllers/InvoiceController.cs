@@ -53,17 +53,24 @@ public class InvoiceController(AppDbContext db) : ControllerBase
             var drug = await db.Drugs.FindAsync(g.Key);
             if (drug is null) return BadRequest(new { detail = $"Drug {g.Key} not found" });
             if (g.Any(i => i.Quantity <= 0)) return BadRequest(new { detail = $"Invalid quantity for {drug.BrandName}" });
+            foreach (var i in g)
+                if (Dispensing.SaleUnitError(drug, i.SaleUnit ?? SaleUnits.Unit, i.Quantity) is { } why) return BadRequest(new { detail = why });
+            int Base(InvoiceItemRequest i) => i.Quantity * Dispensing.UnitsPer(drug, i.SaleUnit ?? SaleUnits.Unit);
             var sellable = await BatchStock.SellableAsync(db, drug.Id);
-            if (sellable.Sum(b => b.QuantityRemaining) < g.Sum(i => i.Quantity))
+            if (sellable.Sum(b => b.QuantityRemaining) < g.Sum(Base))
                 return BadRequest(new { detail = $"Insufficient stock for {drug.BrandName}: {sellable.Sum(b => b.QuantityRemaining)} sellable (expired batches excluded)" });
             foreach (var bg in g.Where(i => i.DrugBatchId != null).GroupBy(i => i.DrugBatchId))
             {
                 var batch = sellable.FirstOrDefault(b => b.Id == bg.Key);
                 if (batch is null) return BadRequest(new { detail = $"{drug.BrandName}: the selected batch is sold out or expired. Re-add the item." });
-                if (batch.QuantityRemaining < bg.Sum(i => i.Quantity))
+                if (batch.QuantityRemaining < bg.Sum(Base))
                     return BadRequest(new { detail = $"{drug.BrandName} batch {batch.BatchNumber}: only {batch.QuantityRemaining} left. Re-add the item." });
-                if (bg.Any(i => Math.Abs(i.UnitPrice - batch.SellingPrice) > 0.005m))
-                    return BadRequest(new { detail = $"{drug.BrandName} batch {batch.BatchNumber} is now priced Rs. {batch.SellingPrice:0.00}. Re-add the item." });
+                foreach (var i in bg)
+                {
+                    var expected = Dispensing.PriceFor(batch, drug, i.SaleUnit ?? SaleUnits.Unit);
+                    if (Math.Abs(i.UnitPrice - expected) > 0.005m)
+                        return BadRequest(new { detail = $"{drug.BrandName} batch {batch.BatchNumber} is now priced Rs. {expected:0.00} per {i.SaleUnit ?? "unit"}. Re-add the item." });
+                }
             }
         }
         foreach (var item in req.Items)
@@ -151,23 +158,38 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         foreach (var item in req.Items)
         {
             var drug = (await db.Drugs.FindAsync(item.DrugId))!;
+            var saleUnit = item.SaleUnit ?? SaleUnits.Unit;
+            var per = Dispensing.UnitsPer(drug, saleUnit);
+            var baseQty = item.Quantity * per;
             int? batchId;
             if (item.DrugBatchId is not null)
             {
                 var batch = await db.DrugBatches.FirstAsync(b => b.Id == item.DrugBatchId);
-                BatchStock.Take(batch, drug, item.Quantity);
+                BatchStock.Take(batch, drug, baseQty);
                 batchId = batch.Id;
             }
             else
             {
-                var taken = await BatchStock.ConsumeFifoAsync(db, drug, item.Quantity);
+                var taken = await BatchStock.ConsumeFifoAsync(db, drug, baseQty);
                 batchId = taken[0].Batch.Id;
             }
 
+            var directions = item.Directions;
+            if (directions is null && item.Dose is > 0 && item.Days is > 0 && item.FrequencyCode is not null)
+            {
+                var f = await db.FrequencyCodes.FirstOrDefaultAsync(x => x.Code == item.FrequencyCode);
+                if (f is not null) directions = Dispensing.Directions(drug, item.Dose.Value, f, item.Days.Value);
+            }
             invoice.Items.Add(new InvoiceItem
             {
                 DrugId = item.DrugId,
                 DrugBatchId = batchId,
+                SaleUnit = saleUnit,
+                UnitsPerSaleUnit = per,
+                Dose = item.Dose,
+                FrequencyCode = item.FrequencyCode,
+                Days = item.Days,
+                Directions = directions,
                 Quantity = item.Quantity,
                 UnitPrice = item.UnitPrice,
                 DiscountRate = item.DiscountRate,
@@ -179,7 +201,7 @@ public class InvoiceController(AppDbContext db) : ControllerBase
             {
                 DrugId = item.DrugId,
                 MovementType = MovementType.Sale,
-                Quantity = -item.Quantity,
+                Quantity = -baseQty,
                 ReferenceType = ReferenceType.Invoice,
                 PerformedByUserId = userId,
                 CreatedAt = DateTime.UtcNow,
@@ -224,7 +246,7 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         foreach (var item in invoice.Items)
         {
             var drug = await db.Drugs.FindAsync(item.DrugId);
-            if (drug is not null) await BatchStock.RestoreAsync(db, drug, item.DrugBatchId, item.Quantity);
+            if (drug is not null) await BatchStock.RestoreAsync(db, drug, item.DrugBatchId, item.Quantity * Math.Max(item.UnitsPerSaleUnit, 1));
         }
 
         await db.SaveChangesAsync();
@@ -233,7 +255,8 @@ public class InvoiceController(AppDbContext db) : ControllerBase
     }
 }
 
-public record InvoiceItemRequest(int DrugId, int Quantity, decimal UnitPrice, decimal DiscountRate, decimal DiscountAmount, decimal LineTotal, int? DrugBatchId = null);
+public record InvoiceItemRequest(int DrugId, int Quantity, decimal UnitPrice, decimal DiscountRate, decimal DiscountAmount, decimal LineTotal, int? DrugBatchId = null,
+    string? SaleUnit = null, decimal? Dose = null, string? FrequencyCode = null, int? Days = null, string? Directions = null);
 public record InvoiceCreateRequest(int? CustomerId, int? DoctorId, int? PrescriptionId,
     decimal Subtotal, decimal DiscountAmount, decimal TaxRate, decimal TaxAmount, decimal TotalAmount,
     string PaymentMode, string? Notes, List<InvoiceItemRequest> Items,

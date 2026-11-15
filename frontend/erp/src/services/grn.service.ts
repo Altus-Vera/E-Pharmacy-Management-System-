@@ -34,6 +34,8 @@ export interface GrnItemCreate {
   manufactured_date?: string;
   /** Selling price for this new stock; it becomes its own batch, sold after older batches (FIFO). */
   selling_price?: number;
+  /** Optional full-pack price for this batch (default = units per pack × unit price). */
+  pack_selling_price?: number;
   is_free_goods?: boolean;
   /** UI only: the drug's current selling price, for comparison */
   current_price?: number;

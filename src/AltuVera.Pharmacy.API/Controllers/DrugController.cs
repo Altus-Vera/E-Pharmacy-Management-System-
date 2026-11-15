@@ -131,7 +131,7 @@ public class DrugController(AppDbContext db) : ControllerBase
         return Ok(list.Select(b => new
         {
             b.Id, b.DrugId, b.BatchNumber, b.ManufacturedDate, b.ExpiryDate, b.QuantityReceived, b.QuantityRemaining,
-            b.UnitCost, b.SellingPrice, b.ReceivedAt, b.Source,
+            b.UnitCost, b.SellingPrice, b.PackSellingPrice, b.ReceivedAt, b.Source,
             is_expired = b.ExpiryDate != null && b.ExpiryDate < today,
         }));
     }
@@ -163,6 +163,12 @@ public class DrugController(AppDbContext db) : ControllerBase
         }
         if (req.BatchNumber is not null) b.BatchNumber = req.BatchNumber;
         if (req.ExpiryDate is not null) b.ExpiryDate = req.ExpiryDate;
+        if (req.PackSellingPrice is not null && req.PackSellingPrice != b.PackSellingPrice)
+        {
+            if (!(User.IsInRole(R.PharmacyManager) || User.IsInRole(R.Admin)))
+                return StatusCode(403, new { detail = "Only a Pharmacy Manager can change a selling price." });
+            b.PackSellingPrice = req.PackSellingPrice > 0 ? req.PackSellingPrice : null;   // 0 clears it (pack = units × unit price)
+        }
         b.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         await BatchStock.SyncAsync(db, b.DrugId);
@@ -172,6 +178,10 @@ public class DrugController(AppDbContext db) : ControllerBase
     private static string? StockLevelError(DrugRequest req)
     {
         if (req.ReorderLevel < 0 || req.LowStockThreshold < 0) return "Reorder level and low stock threshold cannot be negative.";
+        if (req.SellMode is not null && !SellModes.All.Contains(req.SellMode)) return "Selling rule must be loose, strip or pack.";
+        if (req.SellMode == SellModes.Strip && (req.UnitsPerStrip ?? 0) < 1) return "Set the number of units per strip for a strip-only drug.";
+        if (req.UnitsPerStrip is > 0 && req.PackSize is > 0 && req.PackSize % req.UnitsPerStrip != 0)
+            return $"Pack size ({req.PackSize}) should be a whole number of strips of {req.UnitsPerStrip}.";
         if (req.ReorderLevel < req.LowStockThreshold)
             return $"Reorder level ({req.ReorderLevel}) must be at least the low stock threshold ({req.LowStockThreshold}). Reorder first, critical later.";
         return null;
@@ -193,7 +203,18 @@ public class DrugController(AppDbContext db) : ControllerBase
         drug.UnitPrice = req.UnitPrice;
         drug.Discount = req.Discount;
         drug.Quantity = req.Quantity;
-        drug.PackSize = req.PackSize;
+        drug.PackSize = req.PackSize is > 0 ? req.PackSize : null;
+        if (req.BaseUnit is not null) drug.BaseUnit = string.IsNullOrWhiteSpace(req.BaseUnit) ? "unit" : req.BaseUnit.Trim().ToLowerInvariant();
+        if (req.SellMode is not null) drug.SellMode = req.SellMode;
+        if (req.UnitsPerStrip is not null) drug.UnitsPerStrip = req.UnitsPerStrip > 0 ? req.UnitsPerStrip : null;
+        if (req.NonLooseReason is not null) drug.NonLooseReason = string.IsNullOrWhiteSpace(req.NonLooseReason) ? null : req.NonLooseReason.Trim();
+        if (req.MinLooseQty is not null) drug.MinLooseQty = req.MinLooseQty > 0 ? req.MinLooseQty : null;
+        if (req.DoseUnit is not null) drug.DoseUnit = string.IsNullOrWhiteSpace(req.DoseUnit) ? null : req.DoseUnit.Trim();
+        if (req.ContentPerUnit is not null) drug.ContentPerUnit = req.ContentPerUnit > 0 ? req.ContentPerUnit : null;
+        if (req.DefaultDose is not null) drug.DefaultDose = req.DefaultDose > 0 ? req.DefaultDose : null;
+        if (req.DefaultFrequency is not null) drug.DefaultFrequency = string.IsNullOrWhiteSpace(req.DefaultFrequency) ? null : req.DefaultFrequency;
+        if (req.MaxDays is not null) drug.MaxDays = req.MaxDays > 0 ? req.MaxDays : null;
+        if (req.MinDays is not null) drug.MinDays = req.MinDays > 0 ? req.MinDays : null;
         drug.LowStockThreshold = req.LowStockThreshold;
         drug.ReorderLevel = req.ReorderLevel;
         drug.IsPrescriptionOnly = req.IsPrescriptionOnly;
@@ -245,7 +266,10 @@ public record DrugRequest(string ItemCode, string BrandName, string GenericName,
     string? BatchNumber, DateOnly? ManufacturedDate, DateOnly? ExpiryDate, decimal UnitPrice,
     decimal Discount, int Quantity, int? PackSize, int LowStockThreshold, int ReorderLevel,
     bool IsPrescriptionOnly, bool IsOtc, bool IsHighAlert, bool IsNarcotic, bool IsActive,
-    int? CategoryId, int? SupplierId, string? PriceChangeReason = null);
+    int? CategoryId, int? SupplierId, string? PriceChangeReason = null,
+    string? BaseUnit = null, string? SellMode = null, int? UnitsPerStrip = null, string? NonLooseReason = null, int? MinLooseQty = null,
+    string? DoseUnit = null, decimal? ContentPerUnit = null, decimal? DefaultDose = null, string? DefaultFrequency = null,
+    int? MaxDays = null, int? MinDays = null);
 public record CategoryRequest(string Name, string? Description);
 
-public record BatchUpdateRequest(decimal? SellingPrice, string? BatchNumber, DateOnly? ExpiryDate, string? Reason);
+public record BatchUpdateRequest(decimal? SellingPrice, string? BatchNumber, DateOnly? ExpiryDate, string? Reason, decimal? PackSellingPrice = null);

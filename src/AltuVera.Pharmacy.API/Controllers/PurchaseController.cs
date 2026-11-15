@@ -103,11 +103,12 @@ public class GoodsReceiptController(AppDbContext db) : ControllerBase
             var line = new GoodsReceiptItem
             {
                 DrugId = item.DrugId, QuantityReceived = item.QuantityReceived, UnitCost = item.UnitCost, IsFreeGoods = item.IsFreeGoods,
-                BatchNumber = item.BatchNumber, ExpiryDate = item.ExpiryDate, SellingPrice = price,
+                BatchNumber = item.BatchNumber, ExpiryDate = item.ExpiryDate, SellingPrice = price, PackSellingPrice = item.PackSellingPrice,
             };
             grn.Items.Add(line);
             var batch = BatchStock.Receive(db, drug, item.QuantityReceived, price, "GRN", item.BatchNumber, item.ExpiryDate, item.ManufacturedDate,
                 item.IsFreeGoods ? 0 : item.UnitCost);
+            if (item.PackSellingPrice is > 0) batch.PackSellingPrice = item.PackSellingPrice;
             pairs.Add((line, batch));
             db.StockMovements.Add(new StockMovement { DrugId = item.DrugId, MovementType = MovementType.Purchase, Quantity = item.QuantityReceived, UnitCost = item.UnitCost, ReferenceType = ReferenceType.GoodsReceipt, Notes = item.BatchNumber is null ? null : $"Batch {item.BatchNumber}", PerformedByUserId = userId, CreatedAt = DateTime.UtcNow });
         }
@@ -122,6 +123,6 @@ public class GoodsReceiptController(AppDbContext db) : ControllerBase
 public record PoItemRequest(int DrugId, int QuantityOrdered, decimal UnitCost);
 public record PurchaseOrderRequest(int SupplierId, DateOnly OrderDate, DateOnly? ExpectedDeliveryDate, string? Remarks, List<PoItemRequest> Items);
 public record GrnItemRequest(int DrugId, int QuantityReceived, decimal UnitCost, bool IsFreeGoods,
-    string? BatchNumber = null, DateOnly? ExpiryDate = null, DateOnly? ManufacturedDate = null, decimal? SellingPrice = null);
+    string? BatchNumber = null, DateOnly? ExpiryDate = null, DateOnly? ManufacturedDate = null, decimal? SellingPrice = null, decimal? PackSellingPrice = null);
 public record GrnRequest(int? PurchaseOrderId, int SupplierId, DateOnly ReceivedDate, string? Notes, List<GrnItemRequest> Items);
 public record StatusRequest(string Status);

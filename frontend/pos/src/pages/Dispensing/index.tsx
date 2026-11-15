@@ -4,7 +4,8 @@ import { customerService } from "../../services/customer.service";
 import { doctorService } from "../../services/doctor.service";
 import { invoiceService } from "../../services/invoice.service";
 import api from "../../services/api";
-import { useCartStore, sellableQty, sellableBatches } from "../../store/cartStore";
+import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit } from "../../store/cartStore";
+import { DaysCalcModal, BillQuoteModal, SellTag } from "./DaysCalculator";
 import { useAuthStore } from "../../store/authStore";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
@@ -13,7 +14,7 @@ import { formatCurrency, formatDate, formatDateTime } from "../../utils/formatte
 import {
   cartToLines, invoiceToLines, loadLastReceipt, printHtml, renderReceipt, saveLastReceipt, type ReceiptData,
 } from "../../utils/receipt";
-import type { Drug, Customer, Doctor, PaymentMode, Invoice, Gender, SalesReturnReason } from "../../types";
+import type { Drug, Customer, Doctor, PaymentMode, Invoice, Gender, SalesReturnReason, FrequencyCode, SaleUnit, CalcResult } from "../../types";
 import { PrescriptionForm, type RxCreated } from "../../components/PrescriptionForm";
 import styles from "./Dispensing.module.css";
 
@@ -79,7 +80,7 @@ const ACTION_BUTTONS: { label: string; sub?: string; action: ActAction }[] = [
   { label: "Sales Return",    action: "return" },
   { label: "Reprint Last",    sub: "F3", action: "reprint" },
   { label: "Repeat Last",     action: "repeat" },
-  { label: "Print Quote",     action: "quote" },
+  { label: "Days Quote",      sub: "Alt+Q", action: "quote" },
   { label: "New Patient",     action: "newPatient" },
   { label: "Patient History", action: "history" },
   { label: "Day Summary",     action: "xreport" },
@@ -112,6 +113,11 @@ export function DispensingPage() {
   // modal routing
   const [modal, setModal] = useState<ModalKind>(null);
   const [payRef, setPayRef] = useState("");
+  // days calculator (one medicine) and days quote (whole bill)
+  const [freqs, setFreqs] = useState<FrequencyCode[]>([]);
+  const [calcFor, setCalcFor] = useState<{ drug: Drug; initial?: { dose?: number; frequency_code?: string; days?: number } } | null>(null);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  useEffect(() => { api.get<FrequencyCode[]>("/frequency-codes").then((r) => setFreqs(r.data)).catch(() => undefined); }, []);
   const [salesMode, setSalesMode] = useState<"view" | "void" | "return">("view");
   const closeModal = useCallback(() => { setModal(null); setTimeout(() => searchRef.current?.focus(), 0); }, []);
 
@@ -181,7 +187,7 @@ export function DispensingPage() {
   const {
     items, customer, doctor, paymentMode, notes, billDiscount, selectedId, heldBills,
     setCustomer, setDoctor, setPaymentMode, setNotes, setBillDiscount, select, selectNext,
-    addItem, updateQuantity, updateDiscount, removeItem, clearCart, holdBill, recallBill, deleteHeld,
+    addItem, updateQuantity, updateDiscount, removeItem, clearCart, holdBill, recallBill, deleteHeld, changeUnit, applyCalc,
     subtotal, totalDiscount, total,
   } = useCartStore();
 
@@ -265,8 +271,8 @@ export function DispensingPage() {
       notify(`${drug.brand_name}: all remaining stock is EXPIRED — cannot dispense`, "err");
       return false;
     }
-    const inCart = items.filter((i) => i.drug.id === drug.id).reduce((s, i) => s + i.quantity, 0);
-    if (avail <= inCart) {
+    const inCart = items.filter((i) => i.drug.id === drug.id).reduce((s, i) => s + i.quantity * i.units_per, 0);
+    if (avail - inCart < unitsPer(drug, defaultUnit(drug))) {
       notify(avail === 0 ? `${drug.brand_name} is out of stock` : `Only ${avail} sellable in stock`, "err");
       return false;
     }
@@ -380,6 +386,22 @@ export function DispensingPage() {
   const payRefMissing = paymentMode !== "cash" && payRef.trim().length < 4;
 
   /** Confirm Payment: records the invoice, prints the receipt and shows the result. */
+  /** Prints a days quotation (not a tax invoice) for the given calculator results. */
+  function printQuote(results: { drug: Drug; calc: CalcResult }[], days: number) {
+    const lines = results.flatMap(({ drug, calc }) => calc.lines.map((l) => ({
+      name: [drug.brand_name, drug.strength].filter(Boolean).join(" "),
+      sub: `${calc.directions} · Batch ${l.batch_number ?? "-"}`,
+      unit: unitLabel(drug, l.sale_unit).replace(/^\d+ /, ""),
+      qty: l.quantity, price: l.unit_price, disc: 0, total: l.line_total,
+    })));
+    const total = lines.reduce((s, l) => s + l.total, 0);
+    printHtml(renderReceipt({
+      title: `QUOTATION — ${days} DAY${days === 1 ? "" : "S"}`, date: formatDateTime(new Date().toISOString()), cashier: user?.name,
+      customer, doctor, lines, subtotal: total, discount: 0, total,
+      footer: "Prices valid today only. This is a quotation, not a tax invoice.",
+    }));
+  }
+
   async function handleCheckout() {
     if (items.length === 0) return;
     if (payShort) { setCheckoutError(`Cash tendered (Rs. ${tendered.toFixed(2)}) is less than the net payable.`); return; }
@@ -398,6 +420,11 @@ export function DispensingPage() {
         items: items.map((i) => ({
           drug_id: i.drug.id,
           drug_batch_id: i.batch?.id,
+          sale_unit: i.sale_unit,
+          dose: i.dose,
+          frequency_code: i.frequency_code,
+          days: i.days,
+          directions: i.directions,
           quantity: i.quantity,
           unit_price: i.unit_price,
           discount_rate: i.discount_rate,
@@ -489,9 +516,9 @@ export function DispensingPage() {
   function applyQty() {
     const q = Math.floor(Number(inputVal));
     if (!selectedItem || inputVal === "" || !Number.isFinite(q) || q < 0) { setModalError("Enter a valid quantity"); return; }
-    const otherLines = items.filter((i) => i.drug.id === selectedItem.drug.id && i.key !== selectedItem.key).reduce((s, i) => s + i.quantity, 0);
-    const maxQ = sellableQty(selectedItem.drug) - otherLines;
-    if (q > maxQ) { setModalError(`Only ${maxQ} sellable in stock`); return; }
+    const otherLines = items.filter((i) => i.drug.id === selectedItem.drug.id && i.key !== selectedItem.key).reduce((s, i) => s + i.quantity * i.units_per, 0);
+    const maxQ = Math.floor((sellableQty(selectedItem.drug) - otherLines) / selectedItem.units_per);
+    if (q > maxQ) { setModalError(`Only ${maxQ} ${unitLabel(selectedItem.drug, selectedItem.sale_unit, maxQ).replace(/^\d+ /, "")} sellable`); return; }
     updateQuantity(selectedItem.key, q);
     closeModal();
   }
@@ -545,7 +572,7 @@ export function DispensingPage() {
         if (!it.drug) continue;
         const fresh = await drugService.getById(it.drug_id);
         if (sellableQty(fresh) <= 0) continue;
-        if (addItem(fresh, it.quantity) > 0) added++;
+        if (addItem(fresh, it.quantity, (it as { sale_unit?: SaleUnit }).sale_unit) > 0) added++;
       }
       if (inv.customer && !customer) setCustomer(inv.customer);
       notify(added ? `Added ${added} item(s) from ${inv.invoice_number}` : "No items could be re-added (stock/expiry)", added ? "ok" : "warn");
@@ -573,8 +600,8 @@ export function DispensingPage() {
         break;
       }
       case "quote":
-        if (!items.length) { notify("Add items to print a quotation", "warn"); break; }
-        printHtml(renderReceipt(buildReceipt("QUOTATION", { footer: "Prices valid today only. This is not a tax invoice." })));
+        if (!items.length) { notify("Add the medicines first, then ask for a days quote", "warn"); break; }
+        setQuoteOpen(true);
         break;
       case "newPatient":
         setNp({ name: "", contact_number: "", gender: "", dob: "", clinical_remarks: "" });
@@ -727,11 +754,18 @@ export function DispensingPage() {
       F1: "search", F2: "priceCheck", F4: "patient", F5: "prescriber",
       F6: "hold", F7: "recall", F8: "qty", F9: "lineDisc", F10: "billDisc",
     };
-    if (modal || pomWarningDrug || lastSale) return;
+    if (modal || pomWarningDrug || lastSale || calcFor || quoteOpen) return;
     if (fnMap[e.key]) { e.preventDefault(); runFn(fnMap[e.key]); return; }
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
     if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
     if (e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); runFn("note"); return; }
+    if (e.altKey && e.key.toLowerCase() === "q") { e.preventDefault(); void runAction("quote"); return; }
+    if (e.altKey && e.key.toLowerCase() === "d") {
+      e.preventDefault();
+      if (selectedItem) setCalcFor({ drug: selectedItem.drug, initial: { dose: selectedItem.dose, frequency_code: selectedItem.frequency_code, days: selectedItem.days } });
+      else notify("Select a line, then Alt+D for the days calculator", "warn");
+      return;
+    }
     if (e.ctrlKey && e.key === "Delete") { e.preventDefault(); runFn("newSale"); return; }
     const searchEmpty = !drugQuery;
     if (e.key === "Delete" && (searchEmpty || !isTyping(document.activeElement))) { e.preventDefault(); runFn("voidLine"); return; }
@@ -845,6 +879,7 @@ export function DispensingPage() {
                       {drug.is_prescription_only && <span className={styles.pomTag}>POM</span>}
                       {drug.is_high_alert && <span className={styles.alertTag}>HIGH ALERT</span>}
                       {isColdChain(drug) && <span className={styles.coldTag}>2–8°C</span>}
+                      <SellTag drug={drug} compact />
                       {expiryWarning(drug.expiry_date) === "danger" && <span className={styles.alertTag}>EXPIRED</span>}
                     </div>
                     <div className={styles.drugGeneric}>{drug.generic_name}{drug.strength ? ` · ${drug.strength}` : ""} · {drug.dosage_form}</div>
@@ -891,7 +926,7 @@ export function DispensingPage() {
                     <th className={styles.thNum}>#</th>
                     <th className={styles.thItem}>ITEM &amp; STRENGTH</th>
                     <th className={styles.thBatch}>BATCH / EXPIRY</th>
-                    <th className={styles.thUnit}>FORM</th>
+                    <th className={styles.thUnit}>SOLD AS</th>
                     <th className={styles.thQty}>QTY</th>
                     <th className={styles.thPrice}>UNIT PRICE</th>
                     <th className={styles.thDisc}>DISC %</th>
@@ -914,25 +949,37 @@ export function DispensingPage() {
                           <td className={styles.tdItem}>
                             <div className={styles.itemName}>{item.drug.brand_name}</div>
                             <div className={styles.itemSub}>{item.drug.generic_name}{item.drug.strength ? ` · ${item.drug.strength}` : ""}</div>
+                            {item.directions && <div className={styles.itemDirections}>℞ {item.directions}</div>}
                             <div className={styles.itemBadges}>
                               {item.drug.is_prescription_only && <Badge variant="warning">POM</Badge>}
                               {item.drug.is_high_alert && <Badge variant="danger">High Alert</Badge>}
                               {item.drug.is_narcotic && <Badge variant="danger">Narcotic</Badge>}
                               {isColdChain(item.drug) && <Badge variant="info">2–8°C</Badge>}
+                              <SellTag drug={item.drug} compact />
+                              <button className={styles.daysBtn} title="How much for N days (Alt+D)"
+                                onClick={(e) => { e.stopPropagation(); setCalcFor({ drug: item.drug, initial: { dose: item.dose, frequency_code: item.frequency_code, days: item.days } }); }}>
+                                ⏱ {item.days ? `${item.days}d` : "Days"}
+                              </button>
                             </div>
                           </td>
                           <td className={styles.tdBatch}>
                             {bno && (
                               <div className={styles.batchNum}>{bno}</div>
                             )}
-                            {item.batch && <div className={styles.batchLeft}>{item.batch.quantity_remaining - item.quantity} left in batch</div>}
+                            {item.batch && <div className={styles.batchLeft}>{item.batch.quantity_remaining - item.quantity * item.units_per} {baseUnit(item.drug)}s left in batch</div>}
                             {exp && (
                               <div className={styles.expiryDate} style={{ color: warn === "danger" ? "var(--color-danger)" : warn === "warning" ? "var(--color-warning)" : undefined }}>
                                 Exp: {formatDate(exp)}
                               </div>
                             )}
                           </td>
-                          <td className={styles.tdUnit}>{item.drug.dosage_form}</td>
+                          <td className={styles.tdUnit} onClick={(e) => e.stopPropagation()}>
+                            {allowedUnits(item.drug).length > 1 ? (
+                              <select className={styles.unitSelect} value={item.sale_unit} onChange={(e) => changeUnit(item.key, e.target.value as SaleUnit)}>
+                                {allowedUnits(item.drug).map((u) => <option key={u} value={u}>{unitLabel(item.drug, u)}</option>)}
+                              </select>
+                            ) : <span className={styles.unitText}>{unitLabel(item.drug, item.sale_unit)}</span>}
+                          </td>
                           <td className={styles.tdQty}>
                             <div className={styles.qtyControl}>
                               <button className={styles.qtyBtn} onClick={() => updateQuantity(item.key, item.quantity - 1)}>−</button>
@@ -940,7 +987,6 @@ export function DispensingPage() {
                               <button
                                 className={styles.qtyBtn}
                                 onClick={() => updateQuantity(item.key, item.quantity + 1)}
-                                disabled={item.quantity >= item.drug.quantity}
                               >+</button>
                             </div>
                           </td>
@@ -1474,6 +1520,7 @@ export function DispensingPage() {
             ["F5", "Link prescriber"], ["F6", "Hold bill"], ["F7", "Recall held bill"], ["F8", "Change qty (selected line)"],
             ["F9", "Line discount"], ["F10", "Bill discount"], ["F11", "Full screen"], ["F12", "Complete sale"],
             ["↑ / ↓", "Select tray line"], ["DEL", "Void selected line"], ["ALT+N", "Bill note"], ["CTRL+DEL", "New sale"],
+            ["ALT+D", "How much for N days (selected line)"], ["ALT+Q", "Days quote for the whole bill"],
             ["ENTER", "Add scanned / single match"], ["ESC", "Close dialog"], ["?", "This help"],
           ].map(([k, v]) => (
             <div key={k} className={styles.helpRow}><kbd>{k}</kbd><span>{v}</span></div>
@@ -1646,6 +1693,27 @@ export function DispensingPage() {
           {checkoutError && <div className={styles.modalErr}>{checkoutError}</div>}
         </div>
       </Modal>
+
+      {/* Days calculator — one medicine */}
+      <DaysCalcModal open={!!calcFor} drug={calcFor?.drug ?? null} initial={calcFor?.initial} freqs={freqs}
+        onClose={() => { setCalcFor(null); searchRef.current?.focus(); }}
+        onApply={(drug, calc) => {
+          // keep the POM advisory: regulated items still need the Rx before checkout
+          applyCalc(drug, calc);
+          setCalcFor(null);
+          setDrugQuery(""); setDrugResults([]);
+          notify(`${drug.brand_name}: ${calc.lines.map((l) => l.label).join(" + ")} for ${calc.days} days`);
+          searchRef.current?.focus();
+        }} />
+
+      {/* Days quote — whole bill */}
+      <BillQuoteModal open={quoteOpen} items={items} freqs={freqs} onClose={() => setQuoteOpen(false)}
+        onApply={(results) => {
+          results.forEach(({ drug, calc }) => applyCalc(drug, calc));
+          setQuoteOpen(false);
+          notify(`Bill set to ${results[0]?.calc.days ?? ""}-day quantities`);
+        }}
+        onPrint={(results, days) => printQuote(results, days)} />
 
       {/* Success modal */}
       <Modal

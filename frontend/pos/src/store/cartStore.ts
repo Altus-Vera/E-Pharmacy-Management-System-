@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CartItem, Customer, Doctor, Drug, DrugBatch, PaymentMode } from "../types";
+import type { CalcResult, CartItem, Customer, Doctor, Drug, DrugBatch, PaymentMode, SaleUnit } from "../types";
 
 export interface HeldBill {
   id: string;
@@ -30,15 +30,63 @@ function writeHeld(bills: HeldBill[]) {
   }
 }
 
-/** A cart line is one drug from one batch: `${drugId}:${batchId}` (batch 0 = drug without batch data). */
-export const lineKey = (drugId: number, batchId?: number | null) => `${drugId}:${batchId ?? 0}`;
+// ── sale units & selling rules (mirror of the API's Dispensing service) ──────
+
+/** A cart line is one drug, from one batch, in one sale unit. */
+export const lineKey = (drugId: number, batchId?: number | null, unit: SaleUnit = "unit") => `${drugId}:${batchId ?? 0}:${unit}`;
+
+export const baseUnit = (d: Drug) => d.base_unit || "unit";
+export const sellMode = (d: Drug) => d.sell_mode ?? "loose";
+
+export function unitsPer(d: Drug, u: SaleUnit): number {
+  if (u === "strip") return Math.max(d.units_per_strip ?? 1, 1);
+  if (u === "pack") return Math.max(d.pack_size ?? 1, 1);
+  return 1;
+}
+
+/** Price of one sale unit from a batch (a pack may carry its own cheaper price). */
+export function priceFor(d: Drug, b: DrugBatch | null, u: SaleUnit): number {
+  const unit = b ? b.selling_price : d.unit_price;
+  if (u === "pack") return b?.pack_selling_price ?? unit * unitsPer(d, "pack");
+  if (u === "strip") return unit * unitsPer(d, "strip");
+  return unit;
+}
+
+/** Sale units the counter may use for this drug. */
+export function allowedUnits(d: Drug): SaleUnit[] {
+  const mode = sellMode(d);
+  const out: SaleUnit[] = [];
+  const hasStrip = (d.units_per_strip ?? 0) > 1;
+  const hasPack = (d.pack_size ?? 0) > 1;
+  if (mode === "loose" || ((mode === "pack" && !hasPack) || (mode === "strip" && !hasStrip))) out.push("unit");
+  if (hasStrip && mode !== "pack") out.push("strip");
+  if (hasPack) out.push("pack");
+  return out.length ? out : ["unit"];
+}
+
+/** Sale unit a drug is added in by default. */
+export function defaultUnit(d: Drug): SaleUnit {
+  const mode = sellMode(d);
+  if (mode === "strip" && (d.units_per_strip ?? 0) > 1) return "strip";
+  if (mode === "pack" && (d.pack_size ?? 0) > 1) return "pack";
+  return "unit";
+}
+
+export function unitLabel(d: Drug, u: SaleUnit, qty?: number): string {
+  const bu = baseUnit(d);
+  const n = qty ?? 1;
+  const pl = (w: string) => (n === 1 ? w : w + "s");
+  if (u === "strip") return `${qty !== undefined ? n + " " : ""}${pl("strip")} × ${unitsPer(d, u)}`;
+  if (u === "pack") return unitsPer(d, u) > 1 ? `${qty !== undefined ? n + " " : ""}${pl("pack")} × ${unitsPer(d, u)}` : `${qty !== undefined ? n + " " : ""}${pl(bu)}`;
+  return `${qty !== undefined ? n + " " : ""}${pl(bu)}`;
+}
 
 /** Sellable batches, oldest received first (FIFO). The API already filters and orders them. */
 export function sellableBatches(drug: Drug): DrugBatch[] {
   return (drug.batches ?? []).filter((b) => b.quantity_remaining > 0);
 }
 
-/** Units of this drug that can still be sold. */
+/** Base units of this drug that can still be sold. */
 export function sellableQty(drug: Drug): number {
   return drug.batches ? sellableBatches(drug).reduce((s, b) => s + b.quantity_remaining, 0) : drug.quantity;
 }
@@ -60,10 +108,14 @@ interface CartState {
   setBillDiscount: (amount: number) => void;
   select: (key: string | null) => void;
   selectNext: (dir: 1 | -1) => void;
-  /** Adds units FIFO: fills the oldest batch first, then opens a new line for the next batch (which may have its own price). Returns units added. */
-  addItem: (drug: Drug, quantity?: number) => number;
+  /** Adds `quantity` sale units FIFO: fills the oldest batch first, then the next batch (own price) on its own line. Returns units added. */
+  addItem: (drug: Drug, quantity?: number, unit?: SaleUnit) => number;
   updateQuantity: (key: string, quantity: number) => void;
   updateDiscount: (key: string, discountRate: number) => void;
+  /** Switch a line to another sale unit (tablet ↔ strip ↔ pack), keeping 1 of the new unit. */
+  changeUnit: (key: string, unit: SaleUnit) => void;
+  /** Replace a drug's lines with a days-calculator result (quantities, batches, prices, directions). */
+  applyCalc: (drug: Drug, calc: CalcResult) => void;
   removeItem: (key: string) => void;
   clearCart: () => void;
   holdBill: (label: string) => void;
@@ -80,43 +132,48 @@ function calcLineTotal(unitPrice: number, quantity: number, discountRate: number
   return gross - (gross * discountRate) / 100;
 }
 
-/** FIFO allocation of `quantity` more units of `drug` onto the existing lines. */
-function allocate(items: CartItem[], drug: Drug, quantity: number): { items: CartItem[]; added: number; lastKey: string | null } {
+/** Base units already on the bill from one batch. */
+const usedInBatch = (items: CartItem[], drugId: number, batchId: number, exceptKey?: string) =>
+  items.filter((i) => i.drug.id === drugId && i.batch?.id === batchId && i.key !== exceptKey).reduce((s, i) => s + i.quantity * i.units_per, 0);
+
+/** FIFO allocation of `quantity` more sale units of `drug` onto the existing lines. */
+function allocate(items: CartItem[], drug: Drug, quantity: number, unit: SaleUnit): { items: CartItem[]; added: number; lastKey: string | null } {
   let next = [...items];
   let left = quantity;
   let lastKey: string | null = null;
-  const batches = sellableBatches(drug);
+  const per = unitsPer(drug, unit);
+  const meta = next.find((i) => i.drug.id === drug.id);
+  const disc = meta?.discount_rate ?? drug.discount ?? 0;
 
-  if (!drug.batches || batches.length === 0) {
-    // no batch data: single line at the drug price
-    if (!drug.batches) {
-      const key = lineKey(drug.id);
-      const ex = next.find((i) => i.key === key);
-      const room = Math.max(drug.quantity - (ex?.quantity ?? 0), 0);
-      const add = Math.min(left, room);
-      if (add <= 0) return { items, added: 0, lastKey: null };
-      if (ex) next = next.map((i) => (i.key === key ? { ...i, quantity: i.quantity + add, line_total: calcLineTotal(i.unit_price, i.quantity + add, i.discount_rate) } : i));
-      else next.push({ key, drug, batch: null, quantity: add, unit_price: drug.unit_price, discount_rate: drug.discount ?? 0, line_total: calcLineTotal(drug.unit_price, add, drug.discount ?? 0) });
-      return { items: next, added: add, lastKey: key };
-    }
-    return { items, added: 0, lastKey: null };
+  const put = (batch: DrugBatch | null, add: number) => {
+    const key = lineKey(drug.id, batch?.id, unit);
+    const price = priceFor(drug, batch, unit);
+    const ex = next.find((i) => i.key === key);
+    if (ex) next = next.map((i) => (i.key === key ? { ...i, quantity: i.quantity + add, line_total: calcLineTotal(i.unit_price, i.quantity + add, i.discount_rate) } : i));
+    else next.push({
+      key, drug, batch, sale_unit: unit, units_per: per, quantity: add, unit_price: price, discount_rate: disc,
+      line_total: calcLineTotal(price, add, disc),
+      dose: meta?.dose, frequency_code: meta?.frequency_code, days: meta?.days, directions: meta?.directions,
+    });
+    lastKey = key;
+  };
+
+  if (!drug.batches) {
+    // no batch data (older API): single line, capped by total stock
+    const used = next.filter((i) => i.drug.id === drug.id).reduce((s, i) => s + i.quantity * i.units_per, 0);
+    const add = Math.min(left, Math.floor((drug.quantity - used) / per));
+    if (add <= 0) return { items, added: 0, lastKey: null };
+    put(null, add);
+    return { items: next, added: add, lastKey };
   }
 
-  for (const b of batches) {
+  for (const b of sellableBatches(drug)) {
     if (left <= 0) break;
-    const key = lineKey(drug.id, b.id);
-    const ex = next.find((i) => i.key === key);
-    const room = b.quantity_remaining - (ex?.quantity ?? 0);
+    const room = Math.floor((b.quantity_remaining - usedInBatch(next, drug.id, b.id)) / per);
     if (room <= 0) continue;
     const add = Math.min(left, room);
-    if (ex) {
-      next = next.map((i) => (i.key === key ? { ...i, quantity: i.quantity + add, line_total: calcLineTotal(i.unit_price, i.quantity + add, i.discount_rate) } : i));
-    } else {
-      const disc = next.find((i) => i.drug.id === drug.id)?.discount_rate ?? drug.discount ?? 0;
-      next.push({ key, drug, batch: b, quantity: add, unit_price: b.selling_price, discount_rate: disc, line_total: calcLineTotal(b.selling_price, add, disc) });
-    }
+    put(b, add);
     left -= add;
-    lastKey = key;
   }
   return { items: next, added: quantity - left, lastKey };
 }
@@ -148,8 +205,8 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ selectedId: items[next].key });
   },
 
-  addItem: (drug, quantity = 1) => {
-    const r = allocate(get().items, drug, quantity);
+  addItem: (drug, quantity = 1, unit) => {
+    const r = allocate(get().items, drug, quantity, unit ?? defaultUnit(drug));
     if (r.added > 0) set({ items: r.items, selectedId: r.lastKey });
     return r.added;
   },
@@ -161,13 +218,15 @@ export const useCartStore = create<CartState>((set, get) => ({
       get().removeItem(key);
       return;
     }
-    const cap = line.batch ? line.batch.quantity_remaining : line.drug.quantity;
-    const here = Math.min(quantity, cap);
+    const cap = line.batch
+      ? Math.floor((line.batch.quantity_remaining - usedInBatch(get().items, line.drug.id, line.batch.id, key)) / line.units_per)
+      : Math.floor(line.drug.quantity / line.units_per);
+    const here = Math.min(quantity, Math.max(cap, 0));
     set({
       items: get().items.map((i) => (i.key === key ? { ...i, quantity: here, line_total: calcLineTotal(i.unit_price, here, i.discount_rate) } : i)),
     });
     // more than this batch holds: the rest comes from the next batch (FIFO), on its own line
-    if (quantity > here) get().addItem(line.drug, quantity - here);
+    if (quantity > here) get().addItem(line.drug, quantity - here, line.sale_unit);
   },
 
   updateDiscount: (key, discountRate) => {
@@ -175,6 +234,37 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({
       items: get().items.map((i) => (i.key === key ? { ...i, discount_rate: rate, line_total: calcLineTotal(i.unit_price, i.quantity, rate) } : i)),
     });
+  },
+
+  changeUnit: (key, unit) => {
+    const line = get().items.find((i) => i.key === key);
+    if (!line || line.sale_unit === unit) return;
+    get().removeItem(key);
+    get().addItem(line.drug, 1, unit);
+  },
+
+  applyCalc: (drug, calc) => {
+    const keep = get().items.filter((i) => i.drug.id !== drug.id);
+    const old = get().items.find((i) => i.drug.id === drug.id);
+    const disc = old?.discount_rate ?? drug.discount ?? 0;
+    const batches = drug.batches ?? [];
+    const lines: CartItem[] = calc.lines.map((l) => ({
+      key: lineKey(drug.id, l.drug_batch_id, l.sale_unit),
+      drug,
+      batch: batches.find((b) => b.id === l.drug_batch_id) ?? {
+        id: l.drug_batch_id, drug_id: drug.id, batch_number: l.batch_number, expiry_date: l.expiry_date, manufactured_date: null,
+        quantity_received: 0, quantity_remaining: l.quantity * l.units_per_sale_unit, unit_cost: null,
+        selling_price: l.sale_unit === "unit" ? l.unit_price : drug.unit_price, received_at: "", source: "",
+      },
+      sale_unit: l.sale_unit,
+      units_per: l.units_per_sale_unit,
+      quantity: l.quantity,
+      unit_price: l.unit_price,
+      discount_rate: disc,
+      line_total: calcLineTotal(l.unit_price, l.quantity, disc),
+      dose: calc.dose, frequency_code: calc.frequency_code, days: calc.days, directions: calc.directions,
+    }));
+    set({ items: [...keep, ...lines], selectedId: lines[0]?.key ?? get().selectedId });
   },
 
   removeItem: (key) => {
@@ -213,8 +303,11 @@ export const useCartStore = create<CartState>((set, get) => ({
     if (!bill) return;
     const heldBills = get().heldBills.filter((b) => b.id !== id);
     writeHeld(heldBills);
-    // bills held before batch tracking have no key
-    const items = bill.items.map((i) => ({ ...i, key: i.key ?? lineKey(i.drug.id, i.batch?.id), batch: i.batch ?? null }));
+    // bills held before batch / sale-unit tracking lack these fields
+    const items = bill.items.map((i) => {
+      const unit = i.sale_unit ?? "unit";
+      return { ...i, sale_unit: unit, units_per: i.units_per ?? 1, batch: i.batch ?? null, key: lineKey(i.drug.id, i.batch?.id, unit) };
+    });
     set({
       heldBills,
       items,

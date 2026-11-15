@@ -1,0 +1,48 @@
+.body { display: flex; flex-direction: column; gap: 12px; }
+
+/* Loose / Strip / Pack tag */
+.sellTag { display: inline-block; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; border: 1px solid; }
+.sell_loose { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.sell_strip { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+.sell_pack  { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
+
+.drugHead { display: flex; justify-content: space-between; gap: 12px; }
+.drugName { font-size: 1.05rem; font-weight: 800; color: #0f172a; }
+.drugSub { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+.reason { margin-top: 4px; font-size: 0.8rem; font-weight: 700; color: #991b1b; }
+
+.row3 { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.lbl { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #334155; }
+.inp { font-size: 1rem; padding: 8px 10px; border: 1.5px solid #94a3b8; border-radius: 8px; font-family: inherit; text-transform: none; letter-spacing: 0; font-weight: 600; color: #0f172a; background: #fff; }
+.inp:focus { outline: none; border-color: #166534; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { min-width: 46px; padding: 7px 10px; border-radius: 8px; border: 1.5px solid #94a3b8; background: #fff; font-weight: 700; cursor: pointer; color: #0f172a; }
+.chip:hover { border-color: #166534; }
+.chipOn { background: #166534; border-color: #166534; color: #fff; }
+.chipInput { width: 64px; padding: 7px 8px; border-radius: 8px; border: 1.5px dashed #94a3b8; font-weight: 700; text-align: center; }
+
+.result { border: 1.5px solid #86efac; background: #f0fdf4; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.resultMain { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.resultQty { font-size: 1.15rem; font-weight: 800; color: #14532d; }
+.resultSub { font-size: 0.8rem; color: #166534; margin-top: 2px; }
+.resultPrice { font-size: 1.6rem; font-weight: 800; color: #14532d; white-space: nowrap; }
+.lines { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.lines td { padding: 3px 4px; border-top: 1px dashed #bbf7d0; }
+.r { text-align: right; }
+.warn { font-size: 0.8rem; font-weight: 600; color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 6px 10px; }
+
+/* Bill quote */
+.quoteBar { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.quote { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.quote th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; padding: 6px; border-bottom: 2px solid #cbd5e1; }
+.quote td { padding: 6px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+.quote tfoot td { border-top: 2px solid #0f172a; border-bottom: none; font-weight: 800; }
+.qName { font-weight: 700; color: #0f172a; }
+.qInp { width: 58px; padding: 4px 6px; border: 1px solid #94a3b8; border-radius: 6px; text-align: right; font-weight: 600; }
+.qUnit { margin-left: 4px; font-size: 0.72rem; color: #64748b; }
+.qSel { padding: 4px 6px; border: 1px solid #94a3b8; border-radius: 6px; font-weight: 600; background: #fff; }
+.qExtra { font-size: 0.68rem; color: #b45309; }
+.qErr { font-size: 0.75rem; color: #991b1b; font-weight: 600; }
+.qTotal { font-size: 1.1rem; color: #14532d; }
+.qBusy { font-weight: 500; font-size: 0.72rem; color: #64748b; margin-left: 6px; }
