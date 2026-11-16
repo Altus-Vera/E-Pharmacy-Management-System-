@@ -9,6 +9,7 @@ const navItems = [
   { to: "/customers", label: "Customers", icon: "👥" },
   { to: "/doctors", label: "Doctors", icon: "🩺" },
   { to: "/prescriptions", label: "Prescriptions", icon: "📝" },
+  { to: "/prescription-scans", label: "Prescription Scans", icon: "📷" },
   { section: "Inventory" },
   { to: "/inventory", label: "Drug Catalog", icon: "💊" },
   { to: "/stock-view", label: "Stock View", icon: "📦" },

@@ -14,6 +14,7 @@ import { ReportsPage } from "../pages/Reports";
 import { StockLocationsPage } from "../pages/StockLocations";
 import { UnitsOfMeasurePage } from "../pages/UnitsOfMeasure";
 import { DoseCodesPage } from "../pages/DoseCodes";
+import { PrescriptionScansPage } from "../pages/PrescriptionScans";
 import { StockViewPage } from "../pages/StockView";
 import { GoodsReceiptsPage } from "../pages/GoodsReceipts";
 import { PurchaseRequisitionsPage } from "../pages/PurchaseRequisitions";
@@ -67,6 +68,7 @@ export function AppRoutes() {
         <Route path="purchase-orders" element={<Guard path="/purchase-orders"><PurchaseOrdersPage /></Guard>} />
         <Route path="stock-locations" element={<Guard path="/stock-locations"><StockLocationsPage /></Guard>} />
         <Route path="uom" element={<Guard path="/uom"><UnitsOfMeasurePage /></Guard>} />
+        <Route path="prescription-scans" element={<Guard path="/prescription-scans"><PrescriptionScansPage /></Guard>} />
         <Route path="dose-codes" element={<Guard path="/dose-codes"><DoseCodesPage /></Guard>} />
         <Route path="stock-view" element={<Guard path="/stock-view"><StockViewPage /></Guard>} />
         <Route path="grn" element={<Guard path="/grn"><GoodsReceiptsPage /></Guard>} />

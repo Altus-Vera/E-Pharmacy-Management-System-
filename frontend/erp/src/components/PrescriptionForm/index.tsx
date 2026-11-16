@@ -15,9 +15,14 @@ interface Props {
 }
 
 /**
- * New prescription with scanned copy and OCR (System Requirements: Prescription Management).
- * OCR runs in the browser with tesseract.js; the pharmacist reviews the text before saving.
+ * New prescription with scanned copy (System Requirements: Prescription Management).
+ * "Read with AI" sends the photo to the server's prescription reader (Gemini / Claude), which can read
+ * handwriting; the lines are written into Drug Details for the pharmacist to check and correct before saving.
  */
+interface OcrMatch { drug_id: number; brand_name: string; strength: string | null }
+interface OcrLine { raw_text: string; drug_name: string | null; strength: string | null; dose: number | null; frequency_code: string | null; frequency_text: string | null; days: number | null; quantity: number | null; confidence: "high" | "medium" | "low"; matched_drug_id: number | null; matches: OcrMatch[] }
+interface OcrResponse { scan_id: string; result: { patient_name: string | null; doctor_name: string | null; rx_date: string | null; notes: string | null; lines: OcrLine[] } }
+
 export function PrescriptionForm({ customerId, customerName, initialDoctor, onSaved, onCancel }: Props) {
   const [doctor, setDoctor] = useState<RxDoctor | null>(initialDoctor ?? null);
   const [docQ, setDocQ] = useState("");
@@ -50,21 +55,31 @@ export function PrescriptionForm({ customerId, customerName, initialDoctor, onSa
   }
 
   async function runOcr() {
-    if (!file || !file.type.startsWith("image/")) { setError("OCR needs an image scan (JPG or PNG)."); return; }
-    setError(""); setOcrState("Loading OCR engine…");
+    if (!file || !/^image\/(jpeg|png|webp|gif)$/.test(file.type)) { setError("AI reading needs a photo (JPG, PNG or WebP)."); return; }
+    setError(""); setOcrState("Reading the prescription with AI… this can take 10–40 seconds.");
     try {
-      const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("eng", 1, {
-        logger: (m: { status: string; progress: number }) => setOcrState(`${m.status} ${Math.round((m.progress ?? 0) * 100)}%`),
-      });
-      const { data } = await worker.recognize(file);
-      await worker.terminate();
-      const text = data.text.replace(/\n{3,}/g, "\n\n").trim();
-      setDetails((d) => (d ? `${d}\n${text}` : text));
-      setOcrState(text ? `Read ${text.length} characters — please check and correct.` : "No text found in the image.");
+      const form = new FormData();
+      form.append("files", file);
+      const r = (await api.post<OcrResponse>("/prescriptions/ocr", form, { timeout: 180000, headers: { "Content-Type": "multipart/form-data" } })).data.result;
+      const label = { high: "", medium: "  [CHECK]", low: "  [UNSURE — check the photo]" } as const;
+      const text = r.lines.map((l, i) => {
+        const m = l.matches.find((x) => x.drug_id === l.matched_drug_id);
+        const name = m ? `${m.brand_name}${m.strength ? " " + m.strength : ""}` : `${l.drug_name ?? "?"}${l.strength ? " " + l.strength : ""} (not in stock list)`;
+        const how = [l.dose != null ? `${l.dose}` : null, l.frequency_code ?? l.frequency_text, l.days ? `x ${l.days} days` : null, l.quantity ? `qty ${l.quantity}` : null].filter(Boolean).join(" ");
+        return `${i + 1}. ${name} — ${how || "directions unclear"}${label[l.confidence] ?? ""}  (written: "${l.raw_text}")`;
+      }).join("\n");
+      const extra = [r.notes ? `Note: ${r.notes}` : null, r.patient_name ? `Patient on Rx: ${r.patient_name}` : null].filter(Boolean).join("\n");
+      const full = [text, extra].filter(Boolean).join("\n");
+      setDetails((d) => (d ? `${d}\n${full}` : full));
+      if (r.rx_date && /^\d{4}-\d{2}-\d{2}$/.test(r.rx_date)) setIssueDate(r.rx_date);
+      if (!doctor && r.doctor_name) setDocQ(r.doctor_name.replace(/^dr\.?\s*/i, "").split(/\s{2,}|,|MBBS/i)[0].trim());
+      const unsure = r.lines.filter((l) => l.confidence !== "high").length;
+      setOcrState(r.lines.length
+        ? `Read ${r.lines.length} line${r.lines.length === 1 ? "" : "s"}${unsure ? ` — ${unsure} marked CHECK/UNSURE` : ""}. Compare every line with the photo before saving.`
+        : "No medicine lines were found. Type the details by hand.");
     } catch (e) {
       setOcrState("");
-      setError(`OCR failed: ${apiError(e)}`);
+      setError(`AI reading failed: ${apiError(e)}`);
     }
   }
 
@@ -127,9 +142,9 @@ export function PrescriptionForm({ customerId, customerName, initialDoctor, onSa
         <div className={`${s.field} ${s.full}`}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <span className={s.label}>Drug Details (text)</span>
-            <button type="button" className={s.ocrBtn} disabled={!preview || ocrState.startsWith("recogn") || ocrState.startsWith("Loading")} onClick={runOcr}>🔍 Read from scan (OCR)</button>
+            <button type="button" className={s.ocrBtn} disabled={!preview || ocrState.startsWith("Reading")} onClick={runOcr}>{ocrState.startsWith("Reading") ? "Reading…" : "Read with AI"}</button>
           </div>
-          <textarea className={s.input} rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Drug names, strengths, dosage — type or use OCR" />
+          <textarea className={s.input} rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Drug names, strengths, dosage — type, or attach a photo and use Read with AI" />
           {ocrState && <span className={s.hint}>{ocrState}</span>}
         </div>
       </div>

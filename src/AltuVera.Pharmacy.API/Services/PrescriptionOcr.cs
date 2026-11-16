@@ -87,6 +87,7 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
             Extract every medicine line. A wrong medicine is dangerous, so be honest about uncertainty:
             - confidence "high" only when the drug name, strength and directions are all clearly legible;
               "medium" when you resolved some handwriting from context; "low" when you are guessing.
+            - note is read by a pharmacist: plain words, and never mention catalogue ids or other internal numbers.
             - Never invent a line that is not on the prescription. If a word is unreadable, keep it in raw_text and say so in note.
             - catalogue_id: the id from the store catalogue below that best matches the written drug and strength, or null if none fits.
               alternative_ids: up to 4 other plausible catalogue ids (look-alike names, other strengths) when you are not certain.

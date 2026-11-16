@@ -87,6 +87,80 @@ public class PrescriptionOcrController(PrescriptionOcr ocr, IWebHostEnvironment 
         return Ok(new { ok = true });
     }
 
+    /// <summary>Scan history for managers: what was read, what the cashier confirmed, and how many lines changed.</summary>
+    [Authorize(Roles = R.Manager)]
+    [HttpGet("history")]
+    public async Task<IActionResult> History([FromQuery] int take = 100, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(Dir)) return Ok(Array.Empty<object>());
+        var list = new List<object>();
+        foreach (var f in new DirectoryInfo(Dir).GetFiles("*.read.json").OrderByDescending(f => f.LastWriteTimeUtc).Take(Math.Clamp(take, 1, 500)))
+        {
+            var id = f.Name[..^".read.json".Length];
+            try
+            {
+                using var read = JsonDocument.Parse(await System.IO.File.ReadAllTextAsync(f.FullName, ct));
+                var res = read.RootElement.GetProperty("result");
+                var lines = res.GetProperty("lines").EnumerateArray().ToList();
+                var confPath = Path.Combine(Dir, $"{id}.confirmed.json");
+                int? kept = null, changed = null; string? confirmedBy = null; DateTime? confirmedAt = null;
+                if (System.IO.File.Exists(confPath))
+                {
+                    using var conf = JsonDocument.Parse(await System.IO.File.ReadAllTextAsync(confPath, ct));
+                    var c = conf.RootElement;
+                    confirmedBy = c.TryGetProperty("user", out var u) ? u.GetString() : null;
+                    confirmedAt = c.TryGetProperty("at", out var at) ? at.GetDateTime() : null;
+                    var cl = c.GetProperty("confirmed").GetProperty("lines").EnumerateArray().ToList();
+                    kept = cl.Count;
+                    var suggested = lines.Select(l => l.TryGetProperty("matched_drug_id", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetInt32() : (int?)null).ToList();
+                    changed = cl.Count(x => !(x.TryGetProperty("drug_id", out var d) && d.ValueKind == JsonValueKind.Number && suggested.Contains(d.GetInt32())));
+                }
+                list.Add(new
+                {
+                    scan_id = id,
+                    at = read.RootElement.GetProperty("at").GetDateTime(),
+                    user = read.RootElement.TryGetProperty("user", out var ru) ? ru.GetString() : null,
+                    model = res.TryGetProperty("model", out var mo) ? mo.GetString() : null,
+                    patient_name = res.TryGetProperty("patient_name", out var pn) ? pn.GetString() : null,
+                    doctor_name = res.TryGetProperty("doctor_name", out var dn) ? dn.GetString() : null,
+                    lines_read = lines.Count,
+                    low_confidence = lines.Count(l => l.TryGetProperty("confidence", out var cf) && cf.GetString() != "high"),
+                    confirmed_at = confirmedAt, confirmed_by = confirmedBy, lines_kept = kept, lines_changed = changed,
+                });
+            }
+            catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException) { /* skip a damaged record */ }
+        }
+        return Ok(list);
+    }
+
+    [Authorize(Roles = R.Manager)]
+    [HttpGet("{scanId}")]
+    public async Task<IActionResult> Detail(string scanId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(scanId, out var g)) return BadRequest(new { detail = "Bad scan id" });
+        var id = g.ToString("N");
+        var readPath = Path.Combine(Dir, $"{id}.read.json");
+        if (!System.IO.File.Exists(readPath)) return NotFound(new { detail = "Scan not found" });
+        var confPath = Path.Combine(Dir, $"{id}.confirmed.json");
+        var images = Directory.GetFiles(Dir, $"{id}_*").Where(p => !p.EndsWith(".json")).Order().Count();
+        return Ok(new
+        {
+            scan_id = id, images,
+            read = JsonDocument.Parse(await System.IO.File.ReadAllTextAsync(readPath, ct)).RootElement,
+            confirmed = System.IO.File.Exists(confPath) ? JsonDocument.Parse(await System.IO.File.ReadAllTextAsync(confPath, ct)).RootElement : (JsonElement?)null,
+        });
+    }
+
+    /// <summary>The photo itself, through the API so it works behind the dev proxy and stays behind login.</summary>
+    [Authorize(Roles = R.Manager)]
+    [HttpGet("{scanId}/image/{n:int}")]
+    public IActionResult Image(string scanId, int n)
+    {
+        if (!Guid.TryParse(scanId, out var g)) return BadRequest();
+        var path = Directory.Exists(Dir) ? Directory.GetFiles(Dir, $"{g:N}_{n}.*").FirstOrDefault(p => !p.EndsWith(".json")) : null;
+        return path is null ? NotFound() : PhysicalFile(path, MediaFromExt(Path.GetExtension(path)));
+    }
+
     private static string ExtFor(string type) => type switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", _ => ".jpg" };
     private static string MediaFromExt(string ext) => ext switch { ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", _ => "image/jpeg" };
 }

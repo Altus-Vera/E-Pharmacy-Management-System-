@@ -15,6 +15,7 @@ export const PAGE_ROLES: Record<string, Role[]> = {
   "/customers": POS,
   "/doctors": POS,
   "/prescriptions": POS,
+  "/prescription-scans": MANAGER,
   "/sales-returns": POS,
   "/inventory": STOCK,
   "/stock-view": STOCK,
