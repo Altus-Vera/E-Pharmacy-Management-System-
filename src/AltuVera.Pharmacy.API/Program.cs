@@ -27,6 +27,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<AltuVera.Pharmacy.API.Security.AuditFilter>();
+builder.Services.AddScoped<AltuVera.Pharmacy.API.Services.PrescriptionOcr>();
 builder.Services.AddControllers(o => o.Filters.AddService<AltuVera.Pharmacy.API.Security.AuditFilter>())
     .AddJsonOptions(o => {
         o.JsonSerializerOptions.ReferenceHandler =

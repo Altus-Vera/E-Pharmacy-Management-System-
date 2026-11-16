@@ -6,6 +6,7 @@ import { invoiceService } from "../../services/invoice.service";
 import api from "../../services/api";
 import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit } from "../../store/cartStore";
 import { DaysCalcModal, BillQuoteModal, SellTag } from "./DaysCalculator";
+import { RxScanModal } from "./RxScan";
 import { useAuthStore } from "../../store/authStore";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
@@ -55,7 +56,7 @@ type FnAction =
 
 type ActAction =
   | "sales" | "void" | "return" | "reprint" | "repeat" | "quote"
-  | "newPatient" | "history" | "xreport" | "lock" | "fullscreen" | "help";
+  | "newPatient" | "history" | "xreport" | "lock" | "fullscreen" | "help" | "scan";
 
 // ── function key definitions (12 slots, 3 cols × 4 rows) ─────────────────────
 const FN_BUTTONS: { label: string; sub: string; color: string; action: FnAction }[] = [
@@ -85,7 +86,7 @@ const ACTION_BUTTONS: { label: string; sub?: string; action: ActAction }[] = [
   { label: "Patient History", action: "history" },
   { label: "Day Summary",     action: "xreport" },
   { label: "Lock Terminal",   action: "lock" },
-  { label: "Full Screen",     sub: "F11", action: "fullscreen" },
+  { label: "Scan Rx",         sub: "Alt+S", action: "scan" },
   { label: "Shortcuts",       sub: "?", action: "help" },
 ];
 
@@ -117,6 +118,7 @@ export function DispensingPage() {
   const [freqs, setFreqs] = useState<FrequencyCode[]>([]);
   const [calcFor, setCalcFor] = useState<{ drug: Drug; initial?: { dose?: number; frequency_code?: string; days?: number } } | null>(null);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   useEffect(() => { api.get<FrequencyCode[]>("/frequency-codes").then((r) => setFreqs(r.data)).catch(() => undefined); }, []);
   const [salesMode, setSalesMode] = useState<"view" | "void" | "return">("view");
   const closeModal = useCallback(() => { setModal(null); setTimeout(() => searchRef.current?.focus(), 0); }, []);
@@ -621,6 +623,7 @@ export function DispensingPage() {
         setLockError(null);
         setLocked(true);
         break;
+      case "scan": setScanOpen(true); break;
       case "fullscreen":
         if (document.fullscreenElement) void document.exitFullscreen();
         else void document.documentElement.requestFullscreen().catch(() => notify("Full screen not allowed here", "warn"));
@@ -759,6 +762,7 @@ export function DispensingPage() {
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
     if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
     if (e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); runFn("note"); return; }
+    if (e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); void runAction("scan"); return; }
     if (e.altKey && e.key.toLowerCase() === "q") { e.preventDefault(); void runAction("quote"); return; }
     if (e.altKey && e.key.toLowerCase() === "d") {
       e.preventDefault();
@@ -1518,7 +1522,7 @@ export function DispensingPage() {
           {[
             ["F1", "Drug search"], ["F2", "Price check"], ["F3", "Reprint last receipt"], ["F4", "Link patient"],
             ["F5", "Link prescriber"], ["F6", "Hold bill"], ["F7", "Recall held bill"], ["F8", "Change qty (selected line)"],
-            ["F9", "Line discount"], ["F10", "Bill discount"], ["F11", "Full screen"], ["F12", "Complete sale"],
+            ["F9", "Line discount"], ["F10", "Bill discount"], ["F11", "Full screen"], ["Alt+S", "Scan prescription photo"], ["F12", "Complete sale"],
             ["↑ / ↓", "Select tray line"], ["DEL", "Void selected line"], ["ALT+N", "Bill note"], ["CTRL+DEL", "New sale"],
             ["ALT+D", "How much for N days (selected line)"], ["ALT+Q", "Days quote for the whole bill"],
             ["ENTER", "Add scanned / single match"], ["ESC", "Close dialog"], ["?", "This help"],
@@ -1714,6 +1718,19 @@ export function DispensingPage() {
           notify(`Bill set to ${results[0]?.calc.days ?? ""}-day quantities`);
         }}
         onPrint={(results, days) => printQuote(results, days)} />
+
+      {/* Prescription photo (WhatsApp) → AI reading → cashier checks every line */}
+      <RxScanModal open={scanOpen} freqs={freqs} onClose={() => { setScanOpen(false); searchRef.current?.focus(); }}
+        onApply={(lines, meta) => {
+          let short = 0;
+          for (const { drug, calc, quantity } of lines) {
+            if (calc) applyCalc(drug, calc);
+            else if (addItem(drug, quantity) < quantity) short++;
+          }
+          setScanOpen(false);
+          notify(`${lines.length} prescription line${lines.length === 1 ? "" : "s"} added${short ? ` — ${short} short of stock` : ""}${meta.patient ? ` · patient: ${meta.patient}` : ""}`, short ? "warn" : undefined);
+          searchRef.current?.focus();
+        }} />
 
       {/* Success modal */}
       <Modal
