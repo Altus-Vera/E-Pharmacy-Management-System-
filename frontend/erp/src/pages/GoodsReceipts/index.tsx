@@ -11,6 +11,8 @@ import { purchaseOrderService } from "../../services/purchaseOrder.service";
 import { apiError } from "../../utils/errors";
 import type { PurchaseOrder, Supplier } from "../../types";
 import styles from "./GoodsReceipts.module.css";
+import api from "../../services/api";
+import { InvoiceScanModal, type InvoiceApply } from "./InvoiceScan";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -23,6 +25,8 @@ export function GoodsReceiptsPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [openPOs, setOpenPOs] = useState<PurchaseOrder[]>([]);
   const [error, setError] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [fromScan, setFromScan] = useState(false);
 
   const [form, setForm] = useState<Omit<GrnCreate, "items">>({ supplier_id: 0, received_date: today, notes: "" });
   const [items, setItems] = useState<GrnItemCreate[]>([{ drug_id: 0, quantity_received: 1, unit_cost: 0 }]);
@@ -55,6 +59,7 @@ export function GoodsReceiptsPage() {
     setForm({ supplier_id: 0, received_date: today, notes: "" });
     setItems([{ drug_id: 0, quantity_received: 1, unit_cost: 0 }]);
     setError("");
+    setFromScan(false);
     setModalOpen(true);
   }
 
@@ -70,6 +75,18 @@ export function GoodsReceiptsPage() {
         selling_price: (i.drug as { unit_price?: number } | undefined)?.unit_price, current_price: (i.drug as { unit_price?: number } | undefined)?.unit_price }))
       .filter(l => l.quantity_received > 0);
     if (lines.length) setItems(lines);
+  }
+
+  /** Lines checked in the invoice scan → this form (prices looked up so the normal checks still apply). */
+  async function applyScan(a: InvoiceApply) {
+    const ids = [...new Set(a.items.map(i => i.drug_id))];
+    const prices: Record<number, number | undefined> = {};
+    await Promise.all(ids.map(id => api.get<{ unit_price: number }>(`/drugs/${id}`).then(r => { prices[id] = Number(r.data.unit_price); }).catch(() => undefined)));
+    if (!modalOpen) openNew();
+    setForm(f => ({ ...f, supplier_id: a.supplier_id ?? f.supplier_id, received_date: a.received_date ?? f.received_date, notes: [f.notes, a.notes].filter(Boolean).join(" · ") }));
+    setItems(prev => [...prev.filter(i => i.drug_id), ...a.items.map(i => ({ ...i, current_price: prices[i.drug_id], selling_price: prices[i.drug_id] }))]);
+    setFromScan(true);
+    setScanOpen(false);
   }
 
   function addItem() { setItems(prev => [...prev, { drug_id: 0, quantity_received: 1, unit_cost: 0 }]); }
@@ -120,7 +137,10 @@ export function GoodsReceiptsPage() {
         <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-muted)" }}>
           Record goods received from suppliers — updates stock automatically
         </span>
-        <Button variant="primary" onClick={openNew}>+ New GRN</Button>
+        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+          <Button variant="ghost" onClick={() => setScanOpen(true)}>📷 Scan Invoice</Button>
+          <Button variant="primary" onClick={openNew}>+ New GRN</Button>
+        </div>
       </div>
 
       <Table<GoodsReceipt>
@@ -140,6 +160,9 @@ export function GoodsReceiptsPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Goods Receipt Note" size="lg">
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
           {error && <div className={styles.errorBox}>{error}</div>}
+          {fromScan
+            ? <div style={{ background: "#fef3c7", color: "#92400e", padding: "6px 10px", borderRadius: 6, fontSize: "var(--font-size-sm)" }}>Lines filled from a scanned invoice. Check selling prices, then create the GRN.</div>
+            : <div style={{ fontSize: "var(--font-size-sm)" }}>Have the supplier's invoice? <button type="button" onClick={() => setScanOpen(true)} style={{ border: "none", background: "none", color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", padding: 0 }}>📷 Scan it to fill the lines</button></div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
             <label className={styles.selectLabel}>Supplier *
               <select className={styles.select} value={form.supplier_id} onChange={e => setForm(f => ({ ...f, supplier_id: Number(e.target.value) }))}>
@@ -202,6 +225,8 @@ export function GoodsReceiptsPage() {
           </div>
         </div>
       </Modal>
+
+      <InvoiceScanModal open={scanOpen} onClose={() => setScanOpen(false)} onApply={a => void applyScan(a)} />
 
       <Modal open={!!detailGrn} onClose={() => setDetailGrn(null)} title={`GRN Detail — ${detailGrn?.grn_number}`}>
         {detailGrn && (

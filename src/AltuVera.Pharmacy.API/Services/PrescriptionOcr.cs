@@ -24,7 +24,7 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
     public bool Enabled => !string.IsNullOrWhiteSpace(Provider == "gemini" ? GeminiKey : ApiKey);
     private string? ApiKey => config["Ocr:AnthropicApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
     private string? GeminiKey => config["Ocr:GeminiApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(90) };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(150) };
 
     public record Match(int DrugId, string BrandName, string? GenericName, string? Strength, string? DosageForm, int Quantity, double Score);
     public record OcrLine(int LineNo, string RawText, string? DrugName, string? Strength, string? Form,
@@ -105,7 +105,7 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
             """;
 
         var ask = "Read this prescription." + (string.IsNullOrWhiteSpace(cashierHint) ? "" : $"\nNote from the cashier (WhatsApp message text): {cashierHint}");
-        var json = Provider == "gemini" ? await GeminiAsync(system, images, ask, ct) : await ClaudeAsync(system, images, ask, ct);
+        var json = await CallAsync(system, images, ask, Schema, GeminiSchema, "prescription", ct);
 
         using var doc = JsonDocument.Parse(json);
         var r = doc.RootElement;
@@ -148,7 +148,12 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
         return new OcrResult(S(r, "patient_name"), S(r, "doctor_name"), S(r, "rx_date"), S(r, "notes"), lines, warnings, Model);
     }
 
-    private async Task<string> ClaudeAsync(string system, List<(byte[] Bytes, string MediaType)> images, string ask, CancellationToken ct)
+    /// <summary>Sends images + instructions to the configured vision model and returns its JSON text (shared with the invoice reader).</summary>
+    internal Task<string> CallAsync(string system, List<(byte[] Bytes, string MediaType)> images, string ask,
+        Dictionary<string, JsonElement> claudeSchema, object geminiSchema, string what, CancellationToken ct) =>
+        Provider == "gemini" ? GeminiAsync(system, images, ask, geminiSchema, what, ct) : ClaudeAsync(system, images, ask, claudeSchema, what, ct);
+
+    private async Task<string> ClaudeAsync(string system, List<(byte[] Bytes, string MediaType)> images, string ask, Dictionary<string, JsonElement> schema, string what, CancellationToken ct)
     {
         var content = new List<ContentBlockParam>();
         foreach (var (bytes, media) in images)
@@ -160,21 +165,21 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
         {
             Model = ClaudeModel,
             MaxTokens = 16000,
-            OutputConfig = new OutputConfig { Effort = Effort.High, Format = new JsonOutputFormat { Schema = Schema } },
+            OutputConfig = new OutputConfig { Effort = Effort.High, Format = new JsonOutputFormat { Schema = schema } },
             System = new List<TextBlockParam> { new() { Text = system, CacheControl = new CacheControlEphemeral() } },
             Messages = [new UserMessageParam { Content = content }],
         }, ct);
         if (response.StopReason == "refusal")
-            throw new InvalidOperationException("The prescription could not be read automatically. Enter the lines by hand.");
+            throw new InvalidOperationException($"The {what} could not be read automatically. Enter the lines by hand.");
         var json = string.Concat(response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text));
         if (response.StopReason == "max_tokens" || string.IsNullOrWhiteSpace(json))
-            throw new InvalidOperationException("The prescription reading was cut short. Try a clearer or cropped photo.");
+            throw new InvalidOperationException($"The {what} reading was cut short. Try a clearer or cropped photo.");
         log.LogInformation("Rx OCR (Claude): {In} in / {Out} out tokens", response.Usage.InputTokens, response.Usage.OutputTokens);
         return json;
     }
 
     /// <summary>Google Gemini generateContent (REST) with a JSON response schema.</summary>
-    private async Task<string> GeminiAsync(string system, List<(byte[] Bytes, string MediaType)> images, string ask, CancellationToken ct)
+    private async Task<string> GeminiAsync(string system, List<(byte[] Bytes, string MediaType)> images, string ask, object schema, string what, CancellationToken ct)
     {
         var parts = images.Select(i => (object)new { inline_data = new { mime_type = i.MediaType, data = Convert.ToBase64String(i.Bytes) } }).ToList();
         parts.Add(new { text = ask });
@@ -182,7 +187,7 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
         {
             system_instruction = new { parts = new[] { new { text = system } } },
             contents = new[] { new { role = "user", parts } },
-            generationConfig = new { temperature = 0, responseMimeType = "application/json", responseSchema = GeminiSchema, thinkingConfig = new { thinkingLevel = "low" } },
+            generationConfig = new { temperature = 0, responseMimeType = "application/json", responseSchema = schema, thinkingConfig = new { thinkingLevel = "low" } },
         };
         using var req = new HttpRequestMessage(HttpMethod.Post, $"https://generativelanguage.googleapis.com/v1beta/models/{Model}:generateContent")
         {
@@ -207,13 +212,13 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
         }
         using var doc = JsonDocument.Parse(raw);
         if (!doc.RootElement.TryGetProperty("candidates", out var cands) || cands.GetArrayLength() == 0)
-            throw new InvalidOperationException("The prescription could not be read automatically. Enter the lines by hand.");
+            throw new InvalidOperationException($"The {what} could not be read automatically. Enter the lines by hand.");
         var cand = cands[0];
         var finish = cand.TryGetProperty("finishReason", out var f) ? f.GetString() : null;
         if (finish is "SAFETY" or "RECITATION" or "PROHIBITED_CONTENT")
-            throw new InvalidOperationException("The prescription could not be read automatically. Enter the lines by hand.");
+            throw new InvalidOperationException($"The {what} could not be read automatically. Enter the lines by hand.");
         if (finish == "MAX_TOKENS")
-            throw new InvalidOperationException("The prescription reading was cut short. Try a clearer or cropped photo.");
+            throw new InvalidOperationException($"The {what} reading was cut short. Try a clearer or cropped photo.");
         var text = cand.TryGetProperty("content", out var c) && c.TryGetProperty("parts", out var ps)
             ? string.Concat(ps.EnumerateArray().Where(p => p.TryGetProperty("text", out _)).Select(p => p.GetProperty("text").GetString())) : "";
         if (string.IsNullOrWhiteSpace(text))
@@ -264,9 +269,9 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
         _ => MediaType.ImageJpeg,
     };
 
-    private static string? S(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Trim() is { Length: > 0 } s ? s : null;
-    private static int? I(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? (int)Math.Round(v.GetDouble()) : null;
-    private static decimal? D(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : null;
+    internal static string? S(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String && v.GetString()!.Trim() is { Length: > 0 } s ? s : null;
+    internal static int? I(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? (int)Math.Round(v.GetDouble()) : null;
+    internal static decimal? D(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : null;
 
     private static string Norm(string s) => Regex.Replace(s.ToLowerInvariant(), "[^a-z0-9]+", " ").Trim();
 
