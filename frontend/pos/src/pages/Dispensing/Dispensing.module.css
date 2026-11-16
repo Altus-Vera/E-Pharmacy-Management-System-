@@ -1582,8 +1582,12 @@
 .checkoutBtn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #0f5c2a; }
 .checkoutBtn:disabled { background: #cbd5e1; color: #475569; box-shadow: none; opacity: 1; }
 
-/* Billing panel scrolls on short screens instead of clipping the pay button */
-.billing { overflow-y: auto; overflow-x: hidden; }
+/* Billing panel never scrolls: the numpad absorbs any extra rows (discounts, change, etc.) by shrinking its keys */
+.billing { overflow: hidden; }
+.numpadSection { flex: 1 1 auto; min-height: 0; }
+.numpad { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(24px, 1fr); max-height: 140px; }
+.numpad .numpadKey { height: auto; min-height: 24px; }
+.checkoutSection { position: static; margin-top: auto; }
 @media (max-height: 760px) {
   .billSummary { padding: 6px 12px; }
   .actionGrid { padding: 6px; gap: 4px; }
