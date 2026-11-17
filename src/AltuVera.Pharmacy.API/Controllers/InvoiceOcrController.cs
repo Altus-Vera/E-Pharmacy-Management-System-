@@ -16,7 +16,7 @@ namespace AltuVera.Pharmacy.API.Controllers;
 [Authorize(Roles = R.Stock)]
 public class InvoiceOcrController(InvoiceOcr ocr, PrescriptionOcr vision, IWebHostEnvironment env, ILogger<InvoiceOcrController> log) : ControllerBase
 {
-    private static readonly string[] Allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    private static readonly string[] Allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true };
     private string Dir => Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "uploads", "grn-ocr"));
 
@@ -29,7 +29,7 @@ public class InvoiceOcrController(InvoiceOcr ocr, PrescriptionOcr vision, IWebHo
     public async Task<IActionResult> Read([FromForm] List<IFormFile> files, [FromForm] string? hint, CancellationToken ct)
     {
         if (!vision.Enabled) return StatusCode(503, new { detail = "Invoice reading is not set up. Add the Google key (GEMINI_API_KEY) or Anthropic key (ANTHROPIC_API_KEY) on the server." });
-        if (files.Count is 0 or > 4) return BadRequest(new { detail = "Attach 1 to 4 photos of the invoice." });
+        if (files.Count is 0 or > 4) return BadRequest(new { detail = "Attach 1 to 4 photos or PDF files of the invoice." });
         Directory.CreateDirectory(Dir);
         var id = Guid.NewGuid().ToString("N");
         var images = new List<(byte[], string)>();
@@ -37,12 +37,15 @@ public class InvoiceOcrController(InvoiceOcr ocr, PrescriptionOcr vision, IWebHo
         foreach (var f in files)
         {
             var type = f.ContentType.ToLowerInvariant();
-            if (!Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo." });
-            if (f.Length > 5_000_000) return BadRequest(new { detail = $"{f.FileName} is over 5 MB. Send a smaller photo." });
+            if (!Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo, or a PDF." });
+            var max = type == "application/pdf" ? 10_000_000 : 5_000_000;
+            if (f.Length > max) return BadRequest(new { detail = $"{f.FileName} is over {max / 1_000_000} MB. Send a smaller file." });
             using var ms = new MemoryStream();
             await f.CopyToAsync(ms, ct);
+            if (type == "application/pdf" && !ms.ToArray().AsSpan(0, Math.Min(5, (int)ms.Length)).SequenceEqual("%PDF-"u8))
+                return BadRequest(new { detail = $"{f.FileName} is not a valid PDF." });
             images.Add((ms.ToArray(), type));
-            var ext = type switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", _ => ".jpg" };
+            var ext = type switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", "application/pdf" => ".pdf", _ => ".jpg" };
             await System.IO.File.WriteAllBytesAsync(Path.Combine(Dir, $"{id}_{i++}{ext}"), ms.ToArray(), ct);
         }
         try

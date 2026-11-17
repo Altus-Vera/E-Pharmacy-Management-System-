@@ -47,3 +47,7 @@ table { border-collapse: collapse; width: 100%; }
   white-space: nowrap; border-width: 0;
 }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tamil / Sinhala need a font that has their letters */
+html[data-lang="ta"] body { font-family: 'Nirmala UI', 'Latha', 'Noto Sans Tamil', var(--font-family); }
+html[data-lang="si"] body { font-family: 'Nirmala UI', 'Iskoola Pota', 'Noto Sans Sinhala', var(--font-family); }

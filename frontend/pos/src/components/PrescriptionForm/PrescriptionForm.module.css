@@ -5,7 +5,7 @@
 .label { font-size: 13px; font-weight: 700; color: #334155; }
 .static { padding: 8px 12px; background: #F1F5F9; border-radius: 8px; font-weight: 600; color: #0F172A; }
 .input { width: 100%; padding: 8px 12px; border: 1.5px solid #94A3B8; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; color: #0F172A; box-sizing: border-box; }
-.input:focus { outline: none; border-color: #166534; box-shadow: 0 0 0 3px #DCFCE7; }
+.input:focus { outline: none; border-color: #1A7F43; box-shadow: 0 0 0 3px #DCFCE7; }
 .chip { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: #DCFCE7; border: 1.5px solid #86EFAC; border-radius: 8px; font-size: 14px; }
 .chip button { border: none; background: transparent; color: #B91C1C; font-weight: 800; cursor: pointer; }
 .list { position: absolute; top: 100%; left: 0; right: 0; z-index: 60; list-style: none; margin: 4px 0 0; padding: 4px; background: #fff; border: 1.5px solid #94A3B8; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,.15); max-height: 220px; overflow-y: auto; }
@@ -17,6 +17,6 @@
 .hint { font-size: 12px; color: #5B6B80; }
 .error { background: #FEE2E2; color: #B91C1C; border: 1px solid #B91C1C; padding: 8px 12px; border-radius: 8px; font-weight: 600; font-size: 14px; }
 .footer { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #CBD5E1; padding-top: 12px; }
-.primary { padding: 10px 18px; border-radius: 8px; border: 1px solid #14532D; background: linear-gradient(180deg, #16A34A, #166534); color: #fff; font-weight: 800; cursor: pointer; }
+.primary { padding: 10px 18px; border-radius: 8px; border: 1px solid #176B3A; background: linear-gradient(180deg, #16A34A, #1A7F43); color: #fff; font-weight: 800; cursor: pointer; }
 .primary:disabled { opacity: .6; cursor: wait; }
 .secondary { padding: 10px 18px; border-radius: 8px; border: 1.5px solid #94A3B8; background: #fff; color: #0F172A; font-weight: 700; cursor: pointer; }

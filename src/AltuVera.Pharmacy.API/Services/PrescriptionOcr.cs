@@ -157,7 +157,9 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
     {
         var content = new List<ContentBlockParam>();
         foreach (var (bytes, media) in images)
-            content.Add(new ImageBlockParam { Source = new Base64ImageSource { Data = Convert.ToBase64String(bytes), MediaType = MediaTypeFor(media) } });
+            content.Add(media == "application/pdf"
+                ? new DocumentBlockParam { Source = new Base64PdfSource { Data = Convert.ToBase64String(bytes) } }
+                : new ImageBlockParam { Source = new Base64ImageSource { Data = Convert.ToBase64String(bytes), MediaType = MediaTypeFor(media) } });
         content.Add(new TextBlockParam { Text = ask });
 
         var client = new AnthropicClient { ApiKey = ApiKey };
@@ -189,27 +191,52 @@ public class PrescriptionOcr(AppDbContext db, IConfiguration config, ILogger<Pre
             contents = new[] { new { role = "user", parts } },
             generationConfig = new { temperature = 0, responseMimeType = "application/json", responseSchema = schema, thinkingConfig = new { thinkingLevel = "low" } },
         };
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"https://generativelanguage.googleapis.com/v1beta/models/{Model}:generateContent")
+        var json = JsonSerializer.Serialize(body);
+        // Google often answers 503 "high demand" / 500 for a few seconds: retry, then try the backup model if one is set.
+        var models = new List<string> { Model };
+        var fb = config["Ocr:GeminiFallbackModel"] is { Length: > 0 } f0 ? f0 : "gemini-flash-latest";
+        if (fb != "none" && fb != Model) models.Add(fb);
+        int[] waits = [0];   // a busy model takes ~30 s to say so: go straight to the backup
+        string raw = ""; int code = 0;
+        foreach (var model in models)
+        foreach (var wait in waits)
         {
-            Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json"),
-        };
-        req.Headers.Add("x-goog-api-key", GeminiKey);
-        HttpResponseMessage res;
-        try { res = await Http.SendAsync(req, ct); }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-        { throw new OcrServiceException(504, "Google took too long to answer. Try again, or enter the lines by hand."); }
-        using var _res = res;
-        var raw = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode)
-        {
-            log.LogWarning("Rx OCR (Gemini) HTTP {Code}: {Body}", (int)res.StatusCode, raw.Length > 500 ? raw[..500] : raw);
-            throw new OcrServiceException((int)res.StatusCode, (int)res.StatusCode switch
+            if (wait > 0) await Task.Delay(wait, ct);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
             {
-                429 => "The free Google reading limit was reached. Wait a minute (or until tomorrow) and try again.",
-                400 or 401 or 403 => "Google rejected the request (check GEMINI_API_KEY on the server).",
-                _ => "The reading service could not be reached. Enter the lines by hand or try again.",
-            });
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+            };
+            req.Headers.Add("x-goog-api-key", GeminiKey);
+            // When a backup exists, don't let a struggling main model hold the cashier for long.
+            var isLast = model == models[^1];
+            using var cap = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            if (!isLast) cap.CancelAfter(TimeSpan.FromSeconds(30));
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                using var res = await Http.SendAsync(req, cap.Token);
+                raw = await res.Content.ReadAsStringAsync(cap.Token);
+                code = (int)res.StatusCode;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                log.LogWarning("Rx OCR (Gemini {Model}) no answer after {S:0}s", model, sw.Elapsed.TotalSeconds);
+                if (isLast) throw new OcrServiceException(504, "Google took too long to answer. Try again, or enter the lines by hand.");
+                code = 504; continue;
+            }
+            log.LogInformation("Rx OCR (Gemini {Model}) HTTP {Code} in {S:0.0}s", model, code, sw.Elapsed.TotalSeconds);
+            if (code is >= 200 and < 300) goto done;
+            log.LogWarning("Rx OCR (Gemini {Model}) HTTP {Code}: {Body}", model, code, raw.Length > 500 ? raw[..500] : raw);
+            if (code is not (500 or 502 or 503 or 504)) break;   // not a temporary error: don't retry
         }
+        throw new OcrServiceException(code, code switch
+        {
+            429 => "The free Google reading limit was reached. Wait a minute (or until tomorrow) and try again.",
+            400 or 401 or 403 => "Google rejected the request (check GEMINI_API_KEY on the server).",
+            500 or 502 or 503 or 504 => "Google's reading service is busy right now. Wait a minute and press Read again, or enter the lines by hand.",
+            _ => "The reading service could not be reached. Enter the lines by hand or try again.",
+        });
+        done:
         using var doc = JsonDocument.Parse(raw);
         if (!doc.RootElement.TryGetProperty("candidates", out var cands) || cands.GetArrayLength() == 0)
             throw new InvalidOperationException($"The {what} could not be read automatically. Enter the lines by hand.");

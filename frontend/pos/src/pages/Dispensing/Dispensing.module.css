@@ -1384,7 +1384,7 @@
   box-shadow: var(--shadow-md);
   z-index: 2000;
 }
-.toast_ok { background: #166534; }
+.toast_ok { background: #1A7F43; }
 .toast_warn { background: #b45309; }
 .toast_err { background: #b91c1c; }
 
@@ -1446,10 +1446,10 @@
 .ctxChipHeld { background: #6d28d9; border-color: #6d28d9; color: #fff; }
 
 /* Tray header: tinted bar */
-.trayHeader { background: #14532d; border-bottom: none; padding: 10px 14px; }
+.trayHeader { background: #176B3A; border-bottom: none; padding: 10px 14px; }
 .trayTitle { color: #fff; }
 .trayNote { color: rgba(255, 255, 255, 0.75); }
-.trayCount { background: #fff; color: #14532d; font-weight: var(--font-weight-bold); }
+.trayCount { background: #fff; color: #176B3A; font-weight: var(--font-weight-bold); }
 .otcChip { background: #22d3ee; color: #083344; }
 .trayTable thead { background: #eef4ef; }
 .trayTable th { color: #1e3a2a; border-bottom: 1px solid #c9d6cc; padding: 8px; }
@@ -1464,12 +1464,12 @@
   color: #0f172a;
   box-shadow: none;
 }
-.kbKey:hover { background: #f0fdf4; border-color: #86efac; border-bottom-color: #4ade80; color: #14532d; }
+.kbKey:hover { background: #f0fdf4; border-color: #86efac; border-bottom-color: #4ade80; color: #176B3A; }
 .kbKey:active { border-bottom-width: 1px; transform: translateY(2px); }
 .kbMod { background: #e2e8f0; color: #334155; }
 .kbBackspace { background: #fee2e2; border-color: #fca5a5; border-bottom-color: #f87171; color: #991b1b; }
-.kbEnter { background: var(--color-primary); border-color: #14532d; border-bottom-color: #0b3d20; color: #fff; }
-.kbEnter:hover { background: #15803d; color: #fff; }
+.kbEnter { background: var(--color-primary); border-color: #176B3A; border-bottom-color: #145A30; color: #fff; }
+.kbEnter:hover { background: #1E9150; color: #fff; }
 
 /* Function keys: solid filled tiles */
 .fnKey {
@@ -1511,7 +1511,7 @@
 .fnBadge { background: #fff; color: #6d28d9; font-weight: var(--font-weight-bold); }
 
 /* Net payable: bold hero */
-.netStrip { background: linear-gradient(135deg, #166534, #14532d); padding: 14px 16px; }
+.netStrip { background: linear-gradient(135deg, #1A7F43, #176B3A); padding: 14px 16px; }
 .netStripAmount { font-size: 1.6rem; }
 
 /* Action grid: clean white cards with a green accent on hover */
@@ -1556,7 +1556,7 @@
   font-weight: var(--font-weight-bold);
   box-shadow: none;
 }
-.numpadKey:hover { background: #f0fdf4; border-color: #86efac; border-bottom-color: #4ade80; color: #14532d; box-shadow: none; }
+.numpadKey:hover { background: #f0fdf4; border-color: #86efac; border-bottom-color: #4ade80; color: #176B3A; box-shadow: none; }
 .numpadKey:active { border-bottom-width: 1px; transform: translateY(2px); }
 .numpadBackspace { background: #fee2e2; border-color: #fca5a5; border-bottom-color: #f87171; color: #991b1b; }
 .presetChip { background: #fff; border: 1px solid #d3dbe4; border-radius: 8px; padding: 6px 2px; font-size: 0.75rem; font-weight: var(--font-weight-bold); color: #1e293b; }
@@ -1575,11 +1575,11 @@
   border-radius: 12px;
   font-size: 1rem;
   font-weight: var(--font-weight-bold);
-  background: linear-gradient(180deg, #16a34a, #15803d);
-  box-shadow: 0 3px 0 #0f5c2a, 0 8px 18px -8px rgba(21, 128, 61, 0.7);
+  background: linear-gradient(180deg, #16a34a, #1E9150);
+  box-shadow: 0 3px 0 #18753E, 0 8px 18px -8px rgba(21, 128, 61, 0.7);
 }
-.checkoutBtn:hover:not(:disabled) { background: linear-gradient(180deg, #22c55e, #16a34a); box-shadow: 0 3px 0 #0f5c2a, 0 10px 20px -8px rgba(21, 128, 61, 0.8); }
-.checkoutBtn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #0f5c2a; }
+.checkoutBtn:hover:not(:disabled) { background: linear-gradient(180deg, #22c55e, #16a34a); box-shadow: 0 3px 0 #18753E, 0 10px 20px -8px rgba(21, 128, 61, 0.8); }
+.checkoutBtn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #18753E; }
 .checkoutBtn:disabled { background: #cbd5e1; color: #475569; box-shadow: none; opacity: 1; }
 
 /* Billing panel never scrolls: the numpad absorbs any extra rows (discounts, change, etc.) by shrinking its keys */
@@ -1613,24 +1613,24 @@
 
 /* ── Payment modal ─────────────────────────────────────────────────────────── */
 .payModal { display: flex; flex-direction: column; gap: 14px; }
-.payDue { display: flex; flex-direction: column; align-items: center; padding: 14px; border-radius: 12px; background: linear-gradient(135deg, #166534, #14532d); color: #fff; }
+.payDue { display: flex; flex-direction: column; align-items: center; padding: 14px; border-radius: 12px; background: linear-gradient(135deg, #1A7F43, #176B3A); color: #fff; }
 .payDue span { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; }
 .payDue strong { font-size: 2rem; font-weight: 800; line-height: 1.15; }
 .payDue small { font-size: 0.78rem; opacity: 0.85; }
 .payMethods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .payMethod { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 10px; background: #fff; border: 1.5px solid #cbd5e1; cursor: pointer; color: #0f172a; }
-.payMethod:hover { border-color: #166534; }
-.payMethodActive { border: 2px solid #166534; background: #f0fdf4; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+.payMethod:hover { border-color: #1A7F43; }
+.payMethodActive { border: 2px solid #1A7F43; background: #f0fdf4; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
 .payMethodLabel { font-weight: 700; font-size: 0.95rem; }
 .payMethodHint { font-size: 0.7rem; color: #64748b; }
 .payBody { display: flex; flex-direction: column; }
 .payLabel { font-size: 0.75rem; font-weight: 700; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
 .payInput { font-size: 1.5rem; font-weight: 700; padding: 10px 12px; border: 1.5px solid #94a3b8; border-radius: 10px; text-align: right; font-family: inherit; }
-.payInput:focus { outline: none; border-color: #166534; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+.payInput:focus { outline: none; border-color: #1A7F43; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
 .payQuick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
 .payQuick button { padding: 8px 4px; border-radius: 8px; border: 1px solid #94a3b8; background: #fff; font-weight: 600; cursor: pointer; color: #0f172a; }
 .payQuick button:hover { background: #f1f5f9; }
-.payBalance { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; border: 1px solid #86efac; color: #14532d; }
+.payBalance { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; border: 1px solid #86efac; color: #176B3A; }
 .payBalance strong { font-size: 1.3rem; }
 .payBalanceNeg { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
 .payHint { font-size: 0.78rem; color: #64748b; margin-top: 6px; }
@@ -1642,6 +1642,15 @@
 /* Sale unit + days calculator in the tray */
 .unitSelect { padding: 3px 4px; border: 1px solid #94a3b8; border-radius: 6px; font-size: 0.75rem; font-weight: 600; background: #fff; max-width: 110px; }
 .unitText { font-size: 0.75rem; font-weight: 600; color: #334155; }
-.itemDirections { font-size: 0.72rem; font-weight: 700; color: #166534; margin-top: 2px; }
-.daysBtn { margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid #166534; background: #fff; color: #166534; font-size: 0.65rem; font-weight: 800; cursor: pointer; }
-.daysBtn:hover { background: #166534; color: #fff; }
+.itemDirections { font-size: 0.72rem; font-weight: 700; color: #1A7F43; margin-top: 2px; }
+.daysBtn { margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid #1A7F43; background: #fff; color: #1A7F43; font-size: 0.65rem; font-weight: 800; cursor: pointer; }
+.daysBtn:hover { background: #1A7F43; color: #fff; }
+
+/* ── batch chooser ── */
+.batchPick { outline: none; }
+.batchPickHint { font-size: 12px; color: var(--color-text-muted, #64748b); margin-bottom: 8px; }
+.batchPickTable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.batchPickTable th { text-align: left; font-size: 12px; color: #64748b; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+.batchPickTable td { padding: 8px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+.batchPickOn td { background: #f0fdf4; }
+.batchPickFifo { margin-left: 6px; font-size: 10px; font-weight: 700; color: #1A7F43; background: #dcfce7; border-radius: 4px; padding: 1px 5px; }

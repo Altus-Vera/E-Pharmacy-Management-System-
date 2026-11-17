@@ -5,14 +5,14 @@
 .photoBar { display: flex; gap: 6px; align-items: center; }
 .spacer { flex: 1; }
 .thumbBtn { padding: 4px 10px; border: 1.5px solid #94a3b8; border-radius: 6px; background: #fff; font-weight: 700; cursor: pointer; }
-.thumbOn { background: #166534; border-color: #166534; color: #fff; }
+.thumbOn { background: #1A7F43; border-color: #1A7F43; color: #fff; }
 .drop { flex: 1; min-height: 360px; border: 2px dashed #94a3b8; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #334155; cursor: pointer; text-align: center; padding: 16px; }
-.drop:hover { border-color: #166534; background: #f0fdf4; }
+.drop:hover { border-color: #1A7F43; background: #f0fdf4; }
 .dropBig { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
 .dropSub { font-size: 0.78rem; color: #64748b; }
 .lbl { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #334155; }
 .hint { font: inherit; font-size: 0.9rem; text-transform: none; letter-spacing: 0; padding: 6px 8px; border: 1.5px solid #94a3b8; border-radius: 8px; resize: vertical; }
-.link { align-self: flex-start; background: none; border: none; color: #166534; font-weight: 700; cursor: pointer; padding: 4px 0; }
+.link { align-self: flex-start; background: none; border: none; color: #1A7F43; font-weight: 700; cursor: pointer; padding: 4px 0; }
 
 .linesCol { display: flex; flex-direction: column; gap: 10px; max-height: 70vh; overflow: auto; padding-right: 4px; }
 .help { font-size: 0.9rem; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
@@ -26,12 +26,12 @@
 .conf_medium { border-left-color: #f59e0b; }
 .conf_low { border-left-color: #ef4444; background: #fffafa; }
 .conf_manual { border-left-color: #64748b; }
-.lineOk { border-color: #86efac; border-left-color: #166534; background: #f0fdf4; }
+.lineOk { border-color: #86efac; border-left-color: #1A7F43; background: #f0fdf4; }
 .lineHead { display: flex; align-items: center; gap: 8px; }
 .no { width: 22px; height: 22px; border-radius: 50%; background: #0f172a; color: #fff; font-size: 0.75rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
 .raw { flex: 1; font-family: Georgia, serif; font-style: italic; color: #0f172a; }
 .badge { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
-.b_high { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.b_high { background: #dcfce7; color: #176B3A; border-color: #86efac; }
 .b_medium { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
 .b_low { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
 .b_manual { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
@@ -48,10 +48,10 @@
 .search button:hover { background: #dcfce7; }
 
 .lineFoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.calc { font-size: 0.85rem; color: #14532d; }
+.calc { font-size: 0.85rem; color: #176B3A; }
 .dir { font-size: 0.75rem; color: #475569; }
 .muted { color: #64748b; }
 .errTxt { color: #991b1b; font-weight: 600; }
 .check { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 800; color: #334155; padding: 6px 10px; border: 2px solid #94a3b8; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .check input { width: 18px; height: 18px; }
-.checkOn { border-color: #166534; background: #166534; color: #fff; }
+.checkOn { border-color: #1A7F43; background: #1A7F43; color: #fff; }

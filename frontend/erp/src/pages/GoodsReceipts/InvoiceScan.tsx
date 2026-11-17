@@ -24,7 +24,7 @@ interface Row {
 export interface InvoiceApply { supplier_id?: number; received_date?: string; notes?: string; items: GrnItemCreate[] }
 
 const badge = (c: string) => {
-  const [bg, fg, t] = c === "high" ? ["#dcfce7", "#166534", "Clear"] : c === "medium" ? ["#fef3c7", "#92400e", "Check"] : ["#fee2e2", "#991b1b", "Unsure"];
+  const [bg, fg, t] = c === "high" ? ["#dcfce7", "#1A7F43", "Clear"] : c === "medium" ? ["#fef3c7", "#92400e", "Check"] : ["#fee2e2", "#991b1b", "Unsure"];
   return <span style={{ background: bg, color: fg, borderRadius: 999, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>{t}</span>;
 };
 const inp: React.CSSProperties = { width: "100%", padding: "4px 6px", border: "1px solid var(--color-border)", borderRadius: 6, fontSize: 13 };
@@ -48,12 +48,12 @@ export function InvoiceScanModal({ open, onClose, onApply }: { open: boolean; on
   useEffect(() => { const u = files.map(f => URL.createObjectURL(f)); setPreviews(u); return () => u.forEach(URL.revokeObjectURL); }, [files]);
 
   function addFiles(list: FileList | File[]) {
-    const ok = Array.from(list).filter(f => /^image\/(jpeg|png|webp|gif)$/.test(f.type));
+    const ok = Array.from(list).filter(f => /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/.test(f.type));
     setFiles(prev => [...prev, ...ok].slice(0, 4));
   }
 
   async function read() {
-    if (!files.length) { setError("Attach a photo of the invoice."); return; }
+    if (!files.length) { setError("Attach a photo or PDF of the invoice."); return; }
     setBusy(true); setError("");
     try {
       const form = new FormData();
@@ -98,22 +98,24 @@ export function InvoiceScanModal({ open, onClose, onApply }: { open: boolean; on
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {previews.length ? (
             <div style={{ maxHeight: "62vh", overflow: "auto", border: "1px solid var(--color-border)", borderRadius: 8, background: "#0f172a" }}>
-              {previews.map((u, i) => <img key={i} src={u} alt={`Invoice page ${i + 1}`} style={{ width: `${zoom * 100}%`, display: "block" }} />)}
+              {previews.map((u, i) => files[i]?.type === "application/pdf"
+                ? <iframe key={i} src={u} title={`Invoice PDF ${i + 1}`} style={{ width: "100%", height: "60vh", border: "none", display: "block", background: "#fff" }} />
+                : <img key={i} src={u} alt={`Invoice page ${i + 1}`} style={{ width: `${zoom * 100}%`, display: "block" }} />)}
             </div>
           ) : (
             <label onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
               onPaste={e => addFiles(Array.from(e.clipboardData.files))} tabIndex={0}
               style={{ minHeight: 300, border: "2px dashed #94a3b8", borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", textAlign: "center", padding: 16 }}>
-              <b>Drop, paste (Ctrl+V) or choose invoice photos</b>
-              <small style={{ color: "var(--color-text-muted)" }}>Up to 4 pages · JPG / PNG / WebP · max 5 MB each</small>
-              <input type="file" accept="image/*" multiple hidden onChange={e => e.target.files && addFiles(e.target.files)} />
+              <b>Drop, paste (Ctrl+V) or choose invoice photos or PDF</b>
+              <small style={{ color: "var(--color-text-muted)" }}>Up to 4 files · JPG / PNG / WebP (5 MB) or PDF (10 MB)</small>
+              <input type="file" accept="image/*,application/pdf" multiple hidden onChange={e => e.target.files && addFiles(e.target.files)} />
             </label>
           )}
           {previews.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Button size="sm" variant="ghost" onClick={() => setZoom(z => Math.max(1, z - 0.5))}>−</Button>
               <Button size="sm" variant="ghost" onClick={() => setZoom(z => Math.min(4, z + 0.5))}>+ Zoom</Button>
-              {!res && <Button size="sm" variant="ghost" onClick={() => setFiles([])}>Clear photos</Button>}
+              {!res && <Button size="sm" variant="ghost" onClick={() => setFiles([])}>Clear files</Button>}
             </div>
           )}
           {!res && <input style={inp} placeholder="Optional note for the reader (e.g. 'quantities are in boxes of 10')" value={hint} onChange={e => setHint(e.target.value)} />}

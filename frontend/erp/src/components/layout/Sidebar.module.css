@@ -57,8 +57,8 @@
 }
 
 /* ── Solid / modern skin ── */
-.sidebar { background: linear-gradient(180deg, #0F3D22 0%, #14532D 100%) !important; border-right: none !important; box-shadow: 2px 0 10px rgba(0,0,0,.12); }
+.sidebar { background: linear-gradient(180deg, #155C32 0%, #176B3A 100%) !important; border-right: none !important; box-shadow: 2px 0 10px rgba(0,0,0,.12); }
 .section { color: #86EFAC !important; font-weight: 800 !important; letter-spacing: .08em; opacity: .9; }
 .navItem { color: #E2F5E9 !important; font-weight: 600; border-left: 3px solid transparent; border-radius: 0 8px 8px 0; margin-right: 8px; }
 .navItem:hover { background: rgba(255,255,255,.10) !important; color: #FFFFFF !important; }
-.navItemActive { background: #FFFFFF !important; color: #14532D !important; border-left-color: #4ADE80 !important; box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+.navItemActive { background: #FFFFFF !important; color: #176B3A !important; border-left-color: #4ADE80 !important; box-shadow: 0 2px 6px rgba(0,0,0,.18); }

@@ -12,8 +12,8 @@
 
 /* ── Solid / modern skin ── */
 .wrapper { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
-.table thead tr { background: #14532D !important; border-bottom: none !important; }
-.table th { color: #FFFFFF !important; font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: .05em; font-weight: 800 !important; position: sticky; top: 0; background: #14532D; }
+.table thead tr { background: #176B3A !important; border-bottom: none !important; }
+.table th { color: #FFFFFF !important; font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: .05em; font-weight: 800 !important; position: sticky; top: 0; background: #176B3A; }
 .table td { color: var(--color-text); }
 .table tbody tr:nth-child(even) td { background: #F7FAF8; }
 .table tbody tr:hover td { background: var(--color-primary-light) !important; }

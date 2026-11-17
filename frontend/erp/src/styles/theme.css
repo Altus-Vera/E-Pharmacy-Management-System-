@@ -1,12 +1,12 @@
 :root {
   /* ── Primary ────────────────────────────────── */
-  --color-primary:        #166534;
-  --color-primary-hover:  #14532D;
+  --color-primary:        #1A7F43;
+  --color-primary-hover:  #176B3A;
   --color-primary-light:  #DCFCE7;
   --color-primary-border: #86EFAC;
 
   /* ── Semantic ───────────────────────────────── */
-  --color-success:        #15803D;
+  --color-success:        #1E9150;
   --color-success-light:  #DCFCE7;
   --color-warning:        #B45309;
   --color-warning-light:  #FEF3C7;

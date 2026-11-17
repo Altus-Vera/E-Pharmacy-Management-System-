@@ -4,7 +4,7 @@ import { customerService } from "../../services/customer.service";
 import { doctorService } from "../../services/doctor.service";
 import { invoiceService } from "../../services/invoice.service";
 import api from "../../services/api";
-import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit } from "../../store/cartStore";
+import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit, priceFor } from "../../store/cartStore";
 import { DaysCalcModal, BillQuoteModal, SellTag } from "./DaysCalculator";
 import { RxScanModal } from "./RxScan";
 import { useAuthStore } from "../../store/authStore";
@@ -15,7 +15,7 @@ import { formatCurrency, formatDate, formatDateTime } from "../../utils/formatte
 import {
   cartToLines, invoiceToLines, loadLastReceipt, printHtml, renderReceipt, saveLastReceipt, type ReceiptData,
 } from "../../utils/receipt";
-import type { Drug, Customer, Doctor, PaymentMode, Invoice, Gender, SalesReturnReason, FrequencyCode, SaleUnit, CalcResult } from "../../types";
+import type { Drug, DrugBatch, Customer, Doctor, PaymentMode, Invoice, Gender, SalesReturnReason, FrequencyCode, SaleUnit, CalcResult } from "../../types";
 import { PrescriptionForm, type RxCreated } from "../../components/PrescriptionForm";
 import styles from "./Dispensing.module.css";
 
@@ -170,6 +170,8 @@ export function DispensingPage() {
 
   // POM warning
   const [pomWarningDrug, setPomWarningDrug] = useState<Drug | null>(null);
+  const [batchPick, setBatchPick] = useState<Drug | null>(null);
+  const [batchIdx, setBatchIdx] = useState(0);
 
   // regulatory compliance (POM / High Alert / Narcotic)
   const [prescription, setPrescription] = useState<RxCreated | null>(null);
@@ -288,7 +290,25 @@ export function DispensingPage() {
       setPomWarningDrug(drug);
       return;
     }
-    addItem(drug);
+    pickBatchOrAdd(drug);
+  }
+
+  /** Base units of this batch not yet on the bill. */
+  function batchRoom(drug: Drug, b: DrugBatch) {
+    return b.quantity_remaining - items.filter((i) => i.drug.id === drug.id && i.batch?.id === b.id).reduce((s, i) => s + i.quantity * i.units_per, 0);
+  }
+
+  /** More than one batch in stock → let the cashier choose; otherwise add straight away. */
+  function pickBatchOrAdd(drug: Drug) {
+    const per = unitsPer(drug, defaultUnit(drug));
+    const open = sellableBatches(drug).filter((b) => batchRoom(drug, b) >= per);
+    if (open.length > 1) { setBatchIdx(0); setBatchPick(drug); return; }
+    finishAdd(drug, open[0]?.id);
+  }
+
+  function finishAdd(drug: Drug, batchId?: number) {
+    addItem(drug, 1, undefined, batchId);
+    setBatchPick(null);
     setDrugQuery("");
     setDrugResults([]);
     searchRef.current?.focus();
@@ -296,11 +316,9 @@ export function DispensingPage() {
 
   function addPomAnyway() {
     if (pomWarningDrug) {
-      addItem(pomWarningDrug);
+      const d = pomWarningDrug;
       setPomWarningDrug(null);
-      setDrugQuery("");
-      setDrugResults([]);
-      searchRef.current?.focus();
+      pickBatchOrAdd(d);
     }
   }
 
@@ -757,7 +775,7 @@ export function DispensingPage() {
       F1: "search", F2: "priceCheck", F4: "patient", F5: "prescriber",
       F6: "hold", F7: "recall", F8: "qty", F9: "lineDisc", F10: "billDisc",
     };
-    if (modal || pomWarningDrug || lastSale || calcFor || quoteOpen) return;
+    if (modal || pomWarningDrug || batchPick || lastSale || calcFor || quoteOpen) return;
     if (fnMap[e.key]) { e.preventDefault(); runFn(fnMap[e.key]); return; }
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
     if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
@@ -1553,7 +1571,7 @@ export function DispensingPage() {
             return (
               <button key={rx.id} disabled={disabled}
                 onClick={() => { setPrescription(rx); setCheckoutError(null); closeModal(); notify(`Prescription #${rx.id} linked`); }}
-                style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${prescription?.id === rx.id ? "#166534" : "#CBD5E1"}`, background: disabled ? "#F1F5F9" : "#fff", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.65 : 1 }}>
+                style={{ textAlign: "left", padding: "10px 12px", borderRadius: 8, border: `1.5px solid ${prescription?.id === rx.id ? "#1A7F43" : "#CBD5E1"}`, background: disabled ? "#F1F5F9" : "#fff", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.65 : 1 }}>
                 <div style={{ fontWeight: 800 }}>Rx #{rx.id} · issued {formatDate(rx.issue_date)} · {rx.reproduce_type === "recurrent" ? "Recurrent" : "One time"}</div>
                 <div style={{ fontSize: 12, color: "#334155" }}>
                   Valid until {formatDate(until.toISOString())}{expired ? " — EXPIRED" : ""}{noScan ? " — NO SCAN (upload in ERP)" : ""}
@@ -1616,6 +1634,43 @@ export function DispensingPage() {
               notify("Verification recorded — press Complete Sale", "ok");
             }}>Confirm</Button>
         </div>
+      </Modal>
+
+      {/* Batch chooser — shown when the product has more than one batch in stock */}
+      <Modal open={!!batchPick} onClose={() => { setBatchPick(null); searchRef.current?.focus(); }} title={`Choose batch — ${batchPick?.brand_name ?? ""}`} size="md">
+        {batchPick && (() => {
+          const d = batchPick, per = unitsPer(d, defaultUnit(d));
+          const list = sellableBatches(d).filter((b) => batchRoom(d, b) >= per);
+          const go = (b: DrugBatch) => finishAdd(d, b.id);
+          return (
+            <div tabIndex={0} autoFocus className={styles.batchPick}
+              ref={(el) => el?.focus()}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") { e.preventDefault(); setBatchIdx((i) => Math.min(i + 1, list.length - 1)); }
+                else if (e.key === "ArrowUp") { e.preventDefault(); setBatchIdx((i) => Math.max(i - 1, 0)); }
+                else if (e.key === "Enter" && list[batchIdx]) { e.preventDefault(); go(list[batchIdx]); }
+              }}>
+              <div className={styles.batchPickHint}>Oldest batch is first (FIFO). ↑↓ to move · Enter to add · click a batch</div>
+              <table className={styles.batchPickTable}>
+                <thead><tr><th>Batch</th><th>Expiry</th><th>Left</th><th>Price</th><th /></tr></thead>
+                <tbody>
+                  {list.map((b, i) => {
+                    const warn = expiryWarning(b.expiry_date);
+                    return (
+                      <tr key={b.id} className={i === batchIdx ? styles.batchPickOn : undefined} onMouseEnter={() => setBatchIdx(i)} onClick={() => go(b)}>
+                        <td><b>{b.batch_number ?? "—"}</b>{i === 0 && <span className={styles.batchPickFifo}>FIFO</span>}</td>
+                        <td style={{ color: warn === "danger" ? "var(--color-danger)" : warn === "warning" ? "#b45309" : undefined }}>{b.expiry_date ? formatDate(b.expiry_date) : "—"}</td>
+                        <td>{batchRoom(d, b)} {baseUnit(d)}s</td>
+                        <td>{formatCurrency(priceFor(d, b, defaultUnit(d)))}</td>
+                        <td><Button size="sm" variant={i === batchIdx ? "primary" : "secondary"} onClick={(e) => { e.stopPropagation(); go(b); }}>Add</Button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* POM advisory modal */}

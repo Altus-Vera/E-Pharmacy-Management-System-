@@ -27,6 +27,12 @@
 .logoutBtn:hover { background: rgba(255,255,255,0.25); }
 
 /* ── Solid / modern skin ── */
-.header { background: linear-gradient(90deg, #14532D 0%, #166534 60%, #15803D 100%) !important; box-shadow: 0 2px 8px rgba(0,0,0,.18); border-bottom: 3px solid #4ADE80; }
+.header { background: linear-gradient(90deg, #176B3A 0%, #1A7F43 60%, #1E9150 100%) !important; box-shadow: 0 2px 8px rgba(0,0,0,.18); border-bottom: 3px solid #4ADE80; }
 .brand { font-weight: 800 !important; letter-spacing: .01em !important; }
 .logoutBtn { border: 1px solid rgba(255,255,255,.4) !important; font-weight: 700; }
+
+.langSelect {
+  background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4);
+  border-radius: var(--radius-md); padding: 4px 8px; font-size: var(--font-size-sm); font-weight: 700; cursor: pointer;
+}
+.langSelect option { color: #0f172a; }

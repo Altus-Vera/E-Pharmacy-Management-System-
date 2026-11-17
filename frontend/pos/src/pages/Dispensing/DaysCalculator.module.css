@@ -2,7 +2,7 @@
 
 /* Loose / Strip / Pack tag */
 .sellTag { display: inline-block; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; border: 1px solid; }
-.sell_loose { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.sell_loose { background: #dcfce7; color: #176B3A; border-color: #86efac; }
 .sell_strip { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
 .sell_pack  { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
 
@@ -14,19 +14,19 @@
 .row3 { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 .lbl { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #334155; }
 .inp { font-size: 1rem; padding: 8px 10px; border: 1.5px solid #94a3b8; border-radius: 8px; font-family: inherit; text-transform: none; letter-spacing: 0; font-weight: 600; color: #0f172a; background: #fff; }
-.inp:focus { outline: none; border-color: #166534; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
+.inp:focus { outline: none; border-color: #1A7F43; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip { min-width: 46px; padding: 7px 10px; border-radius: 8px; border: 1.5px solid #94a3b8; background: #fff; font-weight: 700; cursor: pointer; color: #0f172a; }
-.chip:hover { border-color: #166534; }
-.chipOn { background: #166534; border-color: #166534; color: #fff; }
+.chip:hover { border-color: #1A7F43; }
+.chipOn { background: #1A7F43; border-color: #1A7F43; color: #fff; }
 .chipInput { width: 64px; padding: 7px 8px; border-radius: 8px; border: 1.5px dashed #94a3b8; font-weight: 700; text-align: center; }
 
 .result { border: 1.5px solid #86efac; background: #f0fdf4; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .resultMain { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.resultQty { font-size: 1.15rem; font-weight: 800; color: #14532d; }
-.resultSub { font-size: 0.8rem; color: #166534; margin-top: 2px; }
-.resultPrice { font-size: 1.6rem; font-weight: 800; color: #14532d; white-space: nowrap; }
+.resultQty { font-size: 1.15rem; font-weight: 800; color: #176B3A; }
+.resultSub { font-size: 0.8rem; color: #1A7F43; margin-top: 2px; }
+.resultPrice { font-size: 1.6rem; font-weight: 800; color: #176B3A; white-space: nowrap; }
 .lines { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .lines td { padding: 3px 4px; border-top: 1px dashed #bbf7d0; }
 .r { text-align: right; }
@@ -44,5 +44,5 @@
 .qSel { padding: 4px 6px; border: 1px solid #94a3b8; border-radius: 6px; font-weight: 600; background: #fff; }
 .qExtra { font-size: 0.68rem; color: #b45309; }
 .qErr { font-size: 0.75rem; color: #991b1b; font-weight: 600; }
-.qTotal { font-size: 1.1rem; color: #14532d; }
+.qTotal { font-size: 1.1rem; color: #176B3A; }
 .qBusy { font-weight: 500; font-size: 0.72rem; color: #64748b; margin-left: 6px; }

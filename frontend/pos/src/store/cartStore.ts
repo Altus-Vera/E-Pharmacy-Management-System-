@@ -109,7 +109,7 @@ interface CartState {
   select: (key: string | null) => void;
   selectNext: (dir: 1 | -1) => void;
   /** Adds `quantity` sale units FIFO: fills the oldest batch first, then the next batch (own price) on its own line. Returns units added. */
-  addItem: (drug: Drug, quantity?: number, unit?: SaleUnit) => number;
+  addItem: (drug: Drug, quantity?: number, unit?: SaleUnit, batchId?: number) => number;
   updateQuantity: (key: string, quantity: number) => void;
   updateDiscount: (key: string, discountRate: number) => void;
   /** Switch a line to another sale unit (tablet ↔ strip ↔ pack), keeping 1 of the new unit. */
@@ -137,7 +137,7 @@ const usedInBatch = (items: CartItem[], drugId: number, batchId: number, exceptK
   items.filter((i) => i.drug.id === drugId && i.batch?.id === batchId && i.key !== exceptKey).reduce((s, i) => s + i.quantity * i.units_per, 0);
 
 /** FIFO allocation of `quantity` more sale units of `drug` onto the existing lines. */
-function allocate(items: CartItem[], drug: Drug, quantity: number, unit: SaleUnit): { items: CartItem[]; added: number; lastKey: string | null } {
+function allocate(items: CartItem[], drug: Drug, quantity: number, unit: SaleUnit, batchId?: number): { items: CartItem[]; added: number; lastKey: string | null } {
   let next = [...items];
   let left = quantity;
   let lastKey: string | null = null;
@@ -167,7 +167,10 @@ function allocate(items: CartItem[], drug: Drug, quantity: number, unit: SaleUni
     return { items: next, added: add, lastKey };
   }
 
-  for (const b of sellableBatches(drug)) {
+  // a batch the cashier picked goes first; anything it can't hold falls back to FIFO
+  const all = sellableBatches(drug);
+  const order = batchId ? [...all.filter((b) => b.id === batchId), ...all.filter((b) => b.id !== batchId)] : all;
+  for (const b of order) {
     if (left <= 0) break;
     const room = Math.floor((b.quantity_remaining - usedInBatch(next, drug.id, b.id)) / per);
     if (room <= 0) continue;
@@ -205,8 +208,8 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ selectedId: items[next].key });
   },
 
-  addItem: (drug, quantity = 1, unit) => {
-    const r = allocate(get().items, drug, quantity, unit ?? defaultUnit(drug));
+  addItem: (drug, quantity = 1, unit, batchId) => {
+    const r = allocate(get().items, drug, quantity, unit ?? defaultUnit(drug), batchId);
     if (r.added > 0) set({ items: r.items, selectedId: r.lastKey });
     return r.added;
   },
