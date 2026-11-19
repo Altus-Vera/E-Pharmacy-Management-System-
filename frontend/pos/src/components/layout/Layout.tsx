@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
+import { ShiftGate } from "../Shift";
 import styles from "./Layout.module.css";
 
 export function Layout() {
@@ -8,7 +9,7 @@ export function Layout() {
       <Header />
       <main className={styles.main}>
         <div className={styles.content}>
-          <Outlet />
+          <ShiftGate><Outlet /></ShiftGate>
         </div>
       </main>
     </div>

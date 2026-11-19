@@ -34,6 +34,7 @@ public class SalesReturnController(AppDbContext db) : ControllerBase
             Reason = Enum.Parse<SalesReturnReason>(req.Reason, true),
             Notes = req.Notes,
             ProcessedByUserId = userId,
+            ShiftId = userId is { } su ? (await ShiftTotals.OpenForAsync(db, su))?.Id : null,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

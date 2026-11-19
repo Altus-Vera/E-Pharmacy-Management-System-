@@ -21,6 +21,8 @@ public class Invoice
     public string? CancellationReason { get; set; }
     public int? ServedByUserId { get; set; }
     public int? VerifiedByUserId { get; set; }
+    /// <summary>POS shift the sale was made in.</summary>
+    public int? ShiftId { get; set; }
     public int LoyaltyPointsEarned { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

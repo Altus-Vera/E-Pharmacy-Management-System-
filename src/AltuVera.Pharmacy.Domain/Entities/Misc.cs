@@ -82,6 +82,8 @@ public class SalesReturn
     public SalesReturnStatus Status { get; set; } = SalesReturnStatus.Pending;
     public string? Notes { get; set; }
     public int? ProcessedByUserId { get; set; }
+    /// <summary>POS shift the refund was given in.</summary>
+    public int? ShiftId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

@@ -33,10 +33,36 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Outlet> Outlets => Set<Outlet>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
     public DbSet<SupplierReturn> SupplierReturns => Set<SupplierReturn>();
+    public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<BillPrescription> BillPrescriptions => Set<BillPrescription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<Shift>(e =>
+        {
+            e.HasIndex(x => x.ShiftNumber).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.Status });
+            e.Property(x => x.ShiftNumber).HasMaxLength(40);
+            e.Property(x => x.Terminal).HasMaxLength(60);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            foreach (var p in new[] { "OpeningCash", "CountedCash", "GrossSales", "DiscountTotal", "NetSales", "CashSales", "CardSales", "OtherSales", "VoidTotal", "ReturnTotal", "ExpectedCash", "CashDifference" })
+                e.Property(p).HasPrecision(18, 2);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<BillPrescription>(e =>
+        {
+            e.HasIndex(x => new { x.QueueDate, x.QueueNumber }).IsUnique();
+            e.HasIndex(x => x.InvoiceId).IsUnique();
+            e.Property(x => x.Files).HasMaxLength(1000);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.HasOne(x => x.Invoice).WithMany().HasForeignKey(x => x.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Invoice>().HasIndex(x => x.ShiftId);
+        modelBuilder.Entity<Invoice>().HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<SalesReturn>().HasIndex(x => x.ShiftId);
+        modelBuilder.Entity<SalesReturn>().HasOne<Shift>().WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.NoAction);
 
         // ── Users ──────────────────────────────────────────────
         modelBuilder.Entity<User>(e =>

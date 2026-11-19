@@ -45,6 +45,11 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         if (req.Items is null || req.Items.Count == 0)
             return BadRequest(new { detail = "Invoice has no items" });
 
+        // Sales are only taken inside an open POS shift
+        var shift = userId is { } su ? await ShiftTotals.OpenForAsync(db, su) : null;
+        if (shift is null)
+            return Conflict(new { detail = "Start your shift before making a sale.", code = "no_shift" });
+
         // Check stock, expiry and regulatory flags
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         bool anyRegulated = false, anyHighAlert = false, anyNarcotic = false;
@@ -138,6 +143,7 @@ public class InvoiceController(AppDbContext db) : ControllerBase
         var invoiceNumber = $"INV-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
         var invoice = new Invoice
         {
+            ShiftId = shift.Id,
             InvoiceNumber = invoiceNumber,
             CustomerId = req.CustomerId,
             DoctorId = req.DoctorId,

@@ -83,6 +83,52 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.BillPrescription", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Files")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateOnly>("QueueDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("QueueNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("UploadedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId")
+                        .IsUnique();
+
+                    b.HasIndex("QueueDate", "QueueNumber")
+                        .IsUnique();
+
+                    b.ToTable("BillPrescriptions");
+                });
+
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.Customer", b =>
                 {
                     b.Property<int>("Id")
@@ -784,6 +830,9 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("served_by_user_id");
 
+                    b.Property<int?>("ShiftId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(15)
@@ -830,6 +879,8 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("PrescriptionId");
+
+                    b.HasIndex("ShiftId");
 
                     b.ToTable("invoices", (string)null);
                 });
@@ -1387,6 +1438,9 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("return_number");
 
+                    b.Property<int?>("ShiftId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -1405,7 +1459,119 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
 
                     b.HasIndex("InvoiceId");
 
+                    b.HasIndex("ShiftId");
+
                     b.ToTable("sales_returns", (string)null);
+                });
+
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.Shift", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CardSales")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CashDifference")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CashSales")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ClosedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ClosingNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("CountedCash")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("DiscountTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ExpectedCash")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("GrossSales")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ItemsSold")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("NetSales")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("OpenedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("OpeningCash")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("OpeningNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("OtherSales")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ReturnCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ReturnTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("SalesCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ShiftNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Terminal")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoidCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("VoidTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShiftNumber")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.StockAdjustment", b =>
@@ -1883,6 +2049,17 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.BillPrescription", b =>
+                {
+                    b.HasOne("AltuVera.Pharmacy.Domain.Entities.Invoice", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+                });
+
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.Drug", b =>
                 {
                     b.HasOne("AltuVera.Pharmacy.Domain.Entities.DrugCategory", "Category")
@@ -1964,6 +2141,11 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .WithMany("Invoices")
                         .HasForeignKey("PrescriptionId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("AltuVera.Pharmacy.Domain.Entities.Shift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Customer");
 
@@ -2093,9 +2275,25 @@ namespace AltuVera.Pharmacy.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AltuVera.Pharmacy.Domain.Entities.Shift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Drug");
 
                     b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.Shift", b =>
+                {
+                    b.HasOne("AltuVera.Pharmacy.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("AltuVera.Pharmacy.Domain.Entities.StockAdjustment", b =>

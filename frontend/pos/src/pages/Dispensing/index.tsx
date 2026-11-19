@@ -7,7 +7,9 @@ import api from "../../services/api";
 import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit, priceFor } from "../../store/cartStore";
 import { DaysCalcModal, BillQuoteModal, SellTag } from "./DaysCalculator";
 import { RxScanModal } from "./RxScan";
+import { RxCopyModal, RxQueueModal, uploadRxCopy } from "./RxCopy";
 import { useAuthStore } from "../../store/authStore";
+import { useShiftStore } from "../../store/shiftStore";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
@@ -119,6 +121,11 @@ export function DispensingPage() {
   const [calcFor, setCalcFor] = useState<{ drug: Drug; initial?: { dose?: number; frequency_code?: string; days?: number } } | null>(null);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // optional paper-prescription copy kept with this bill (daily queue)
+  const [rxFiles, setRxFiles] = useState<File[]>([]);
+  const [rxNote, setRxNote] = useState("");
+  const [rxCopyOpen, setRxCopyOpen] = useState(false);
+  const [rxQueueOpen, setRxQueueOpen] = useState(false);
   useEffect(() => { api.get<FrequencyCode[]>("/frequency-codes").then((r) => setFreqs(r.data)).catch(() => undefined); }, []);
   const [salesMode, setSalesMode] = useState<"view" | "void" | "return">("view");
   const closeModal = useCallback(() => { setModal(null); setTimeout(() => searchRef.current?.focus(), 0); }, []);
@@ -459,8 +466,15 @@ export function DispensingPage() {
         payment_mode: apiPayMode(paymentMode),
         notes: [notes, paymentMode !== "cash" && payRef.trim() ? `${PAY_LABEL[paymentMode]} ref: ${payRef.trim()}` : ""].filter(Boolean).join(" | ") || undefined,
       });
+      // keep the prescription copy with the bill → next number in today's queue (printed on the receipt)
+      let rxQueue: number | undefined;
+      if (rxFiles.length) {
+        try { rxQueue = (await uploadRxCopy(invoice.id, rxFiles, rxNote)).queue_number; }
+        catch { setTimeout(() => notify(`Bill ${invoice.invoice_number} saved, but the prescription copy did not upload — attach it in the ERP (Prescription Queue)`, "warn"), 300); }
+      }
       const paidCash = paymentMode === "cash" ? (tendered || netTotal) : 0;
       const receipt = buildReceipt("TAX INVOICE", {
+        rxQueue,
         number: invoice.invoice_number,
         paymentMode: PAY_LABEL[paymentMode],
         payment: { method: PAY_LABEL[paymentMode], amount: netTotal, reference: paymentMode !== "cash" ? payRef.trim() : undefined },
@@ -482,12 +496,17 @@ export function DispensingPage() {
       clearCart();
       setPrescription(null);
       setVerification(null);
+      setRxFiles([]);
+      setRxNote("");
+      if (rxQueue) setTimeout(() => notify(`Prescription copy kept — queue #${rxQueue}`, "ok"), 200);
       setDrugResults([]);
       setDrugQuery("");
       setCashTendered("");
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setCheckoutError(msg ?? "Checkout failed. Please check stock levels and try again.");
+      // shift was ended elsewhere (e.g. by a manager): show the Start Shift screen
+      if ((err as { response?: { data?: { code?: string } } })?.response?.data?.code === "no_shift") { closeModal(); void useShiftStore.getState().load(); }
     } finally {
       setSubmitting(false);
     }
@@ -775,7 +794,7 @@ export function DispensingPage() {
       F1: "search", F2: "priceCheck", F4: "patient", F5: "prescriber",
       F6: "hold", F7: "recall", F8: "qty", F9: "lineDisc", F10: "billDisc",
     };
-    if (modal || pomWarningDrug || batchPick || lastSale || calcFor || quoteOpen) return;
+    if (modal || pomWarningDrug || batchPick || lastSale || calcFor || quoteOpen || rxCopyOpen || rxQueueOpen) return;
     if (fnMap[e.key]) { e.preventDefault(); runFn(fnMap[e.key]); return; }
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
     if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
@@ -865,6 +884,15 @@ export function DispensingPage() {
               <span className={styles.ctxLabel}>Prescription</span>
               <span className={styles.ctxValue}>{prescription ? `Rx #${prescription.id} · ${formatDate(prescription.issue_date)}` : hasRegulated ? "REQUIRED" : "None"}</span>
               {prescription && <span className={styles.ctxX} onClick={(e) => { e.stopPropagation(); setPrescription(null); }}>✕</span>}
+            </button>
+            <button className={`${styles.ctxChip} ${rxFiles.length ? styles.ctxChipOn : ""}`} onClick={() => setRxCopyOpen(true)} title="Keep a copy of the paper prescription with this bill (optional)">
+              <span className={styles.ctxLabel}>Rx copy</span>
+              <span className={styles.ctxValue}>{rxFiles.length ? `${rxFiles.length} page${rxFiles.length > 1 ? "s" : ""} · queued on sale` : "None"}</span>
+              {rxFiles.length > 0 && <span className={styles.ctxX} onClick={(e) => { e.stopPropagation(); setRxFiles([]); setRxNote(""); }}>✕</span>}
+            </button>
+            <button className={styles.ctxChip} onClick={() => setRxQueueOpen(true)} title="Prescription copies kept today, in queue order">
+              <span className={styles.ctxLabel}>Today's</span>
+              <span className={styles.ctxValue}>Rx queue</span>
             </button>
             {hasHighRisk && (
               <button className={`${styles.ctxChip} ${verification ? styles.ctxChipOn : styles.ctxChipHeld}`} onClick={() => setModal("verify")}>
@@ -1775,6 +1803,9 @@ export function DispensingPage() {
         onPrint={(results, days) => printQuote(results, days)} />
 
       {/* Prescription photo (WhatsApp) → AI reading → cashier checks every line */}
+      <RxCopyModal open={rxCopyOpen} files={rxFiles} note={rxNote} onClose={() => setRxCopyOpen(false)}
+        onSave={(f, n) => { setRxFiles(f); setRxNote(n); setRxCopyOpen(false); searchRef.current?.focus(); }} />
+      <RxQueueModal open={rxQueueOpen} onClose={() => { setRxQueueOpen(false); searchRef.current?.focus(); }} />
       <RxScanModal open={scanOpen} freqs={freqs} onClose={() => { setScanOpen(false); searchRef.current?.focus(); }}
         onApply={(lines, meta) => {
           let short = 0;

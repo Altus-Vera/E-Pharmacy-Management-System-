@@ -1,0 +1,26 @@
+.gateWrap { min-height: calc(100vh - 80px); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.gateCard { width: 420px; max-width: 100%; background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+.gateIcon { font-size: 34px; text-align: center; }
+.gateTitle { margin: 0; text-align: center; font-size: 22px; color: #176B3A; }
+.gateSub { margin: 0 0 4px; text-align: center; color: #475569; font-size: 14px; line-height: 1.45; }
+.lbl { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: #334155; margin-top: 8px; }
+.inp, .inpBig { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-weight: 400; }
+.inpBig { font-size: 22px; font-weight: 700; padding: 10px 12px; }
+.inp:focus, .inpBig:focus { outline: 2px solid #86efac; border-color: #1A7F43; }
+.err { color: #b91c1c; background: #fee2e2; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.linkBtn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 13px; text-decoration: underline; }
+.badge { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 12px; color: #fff; }
+.badgeDot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; }
+.badgeBtn { background: #fff; color: #b45309; border: none; border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; cursor: pointer; }
+.badgeBtn:hover { background: #fef3c7; }
+.metaRow { display: flex; justify-content: space-between; font-size: 13px; color: #334155; margin-bottom: 8px; }
+.fig { color: #0f172a; width: 100%; border-collapse: collapse; font-size: 14px; margin: 6px 0 4px; }
+.fig td { padding: 5px 4px; border-bottom: 1px solid #f1f5f9; }
+.fig td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.figStrong td { font-weight: 700; background: #f0fdf4; }
+.okBox { background: #dcfce7; color: #166534; border-radius: 8px; padding: 8px 10px; font-weight: 700; text-align: center; margin: 6px 0; }
+.warnBox { background: #fef3c7; color: #92400e; border-radius: 8px; padding: 8px 10px; font-weight: 700; text-align: center; margin: 6px 0; }
+.muted { color: #64748b; font-size: 13px; }
+
+/* modals opened from the header must not inherit its white text */
+.modalText { display: contents; color: #0f172a; text-align: left; font-weight: 400; }

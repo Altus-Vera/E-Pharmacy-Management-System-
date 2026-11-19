@@ -40,6 +40,8 @@ export interface ReceiptData {
   notes?: string;
   footer?: string;
   reprint?: boolean;
+  /** Daily prescription-queue number when a paper Rx copy was kept with the bill. */
+  rxQueue?: number;
 }
 
 // Store details printed in the receipt header. Override per branch with VITE_STORE_* in frontend/pos/.env
@@ -138,6 +140,7 @@ export function renderReceipt(d: ReceiptData): string {
       ${d.doctor ? row("Prescriber", `Dr. ${esc(d.doctor.name)}${d.doctor.slmc_reg_no ? `<br>SLMC ${esc(d.doctor.slmc_reg_no)}` : ""}`) : ""}
       ${d.prescriptionId ? row("Rx Ref", `#${d.prescriptionId}`) : ""}
       ${d.verifiedBy ? row("Checked by", esc(d.verifiedBy)) : ""}
+      ${d.rxQueue ? row("Rx Queue No", `<b style="font-size:14px">#${d.rxQueue}</b>`) : ""}
     </table>
     <hr>
     <table>
@@ -209,4 +212,81 @@ export function saveLastReceipt(d: ReceiptData) {
 
 export function loadLastReceipt(): ReceiptData | null {
   try { return JSON.parse(localStorage.getItem(LAST_KEY) ?? "null"); } catch { return null; }
+}
+
+// ── shift report (end of shift, printed on the receipt printer) ─────────────
+export interface ShiftReportData {
+  shift_number: string; cashier_name: string; cashier_username: string; terminal: string | null;
+  opened_at: string; closed_at: string | null; closed_by_name: string | null; duration_minutes: number;
+  opening_cash: number; counted_cash: number | null; cash_difference: number | null;
+  opening_notes: string | null; closing_notes: string | null; live: boolean;
+  totals: { sales_count: number; gross_sales: number; discount_total: number; net_sales: number; cash_sales: number; card_sales: number; other_sales: number;
+    void_count: number; void_total: number; return_count: number; return_total: number; items_sold: number; expected_cash: number };
+  top_items: { name: string; quantity: number; amount: number }[] | null;
+}
+
+export function renderShiftReport(s: ShiftReportData): string {
+  const t = s.totals;
+  const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-");
+  const dur = `${Math.floor(s.duration_minutes / 60)}h ${s.duration_minutes % 60}m`;
+  const diff = s.cash_difference ?? 0;
+  const top = (s.top_items ?? []).map((i) => `<tr><td>${esc(i.name)}</td><td class="r">${i.quantity}</td><td class="r">${money(i.amount)}</td></tr>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(s.shift_number)}</title><style>
+    @page { size: 80mm auto; margin: 3mm; }
+    body { font-family: 'Consolas','Courier New',monospace; font-size: 11px; width: 74mm; margin: 0 auto; color:#000; line-height: 1.35; }
+    .c { text-align:center; } .r { text-align:right; } .s { font-size: 9.5px; }
+    .store { font-size: 16px; font-weight: 700; text-align:center; }
+    .title { text-align:center; font-weight:700; font-size: 12px; margin: 5px 0; padding: 3px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; letter-spacing: 2px; }
+    table { width:100%; border-collapse: collapse; } td { padding: 1px 0; vertical-align: top; }
+    h4 { margin: 6px 0 2px; font-size: 11px; border-bottom: 1px solid #000; }
+    hr { border:0; border-top:1px dashed #000; margin: 5px 0; }
+    .big td { font-size: 13px; font-weight: 700; }
+    .box { border: 1px solid #000; padding: 3px; margin-top: 4px; text-align: center; font-weight: 700; }
+  </style></head><body>
+    <div class="store">${esc(STORE.name)}</div>
+    <div class="c s">${esc(STORE.address)}</div>
+    <div class="title">${s.live ? "SHIFT X-READING (OPEN)" : "SHIFT END REPORT"}</div>
+    <table>
+      ${row("Shift No", `<b>${esc(s.shift_number)}</b>`)}
+      ${row("Cashier", `${esc(s.cashier_name)} (${esc(s.cashier_username)})`)}
+      ${row("Terminal", esc(s.terminal ?? STORE.terminal))}
+      ${row("Started", dt(s.opened_at))}
+      ${row("Ended", s.live ? "still open" : dt(s.closed_at))}
+      ${row("Duration", dur)}
+      ${s.closed_by_name ? row("Ended by", esc(s.closed_by_name)) : ""}
+    </table>
+    <h4>SALES</h4>
+    <table>
+      ${row("Bills", String(t.sales_count))}
+      ${row("Items sold", String(t.items_sold))}
+      ${row("Gross sales", money(t.gross_sales))}
+      ${row("Discounts", `-${money(t.discount_total)}`)}
+      ${row("NET SALES (Rs.)", money(t.net_sales), "big")}
+    </table>
+    <h4>BY PAYMENT</h4>
+    <table>
+      ${row("Cash", money(t.cash_sales))}
+      ${row("Card", money(t.card_sales))}
+      ${row("LankaQR / Other", money(t.other_sales))}
+    </table>
+    <h4>RETURNS &amp; VOIDS</h4>
+    <table>
+      ${row(`Returns (${t.return_count})`, `-${money(t.return_total)}`)}
+      ${row(`Voided bills (${t.void_count})`, money(t.void_total))}
+    </table>
+    <h4>CASH DRAWER</h4>
+    <table>
+      ${row("Opening cash", money(s.opening_cash))}
+      ${row("+ Cash sales", money(t.cash_sales))}
+      ${row("- Cash refunds", money(t.return_total))}
+      ${row("Expected in drawer", money(t.expected_cash), "big")}
+      ${s.counted_cash != null ? row("Counted", money(s.counted_cash)) : ""}
+    </table>
+    ${s.counted_cash != null ? `<div class="box">${Math.abs(diff) < 0.005 ? "CASH BALANCED" : diff > 0 ? `CASH OVER Rs. ${money(diff)}` : `CASH SHORT Rs. ${money(-diff)}`}</div>` : ""}
+    ${top ? `<h4>TOP ITEMS</h4><table>${top}</table>` : ""}
+    ${s.opening_notes || s.closing_notes ? `<hr><div class="s">${s.opening_notes ? `Start note: ${esc(s.opening_notes)}<br>` : ""}${s.closing_notes ? `End note: ${esc(s.closing_notes)}` : ""}</div>` : ""}
+    <hr>
+    <table style="margin-top:14px"><tr><td>Cashier sign: ..............</td></tr><tr><td style="padding-top:12px">Manager sign: ..............</td></tr></table>
+    <div class="c s" style="margin-top:6px">Printed ${dt(new Date().toISOString())} · AltusVera</div>
+  </body></html>`;
 }

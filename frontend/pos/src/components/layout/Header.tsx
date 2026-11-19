@@ -1,16 +1,11 @@
-import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 import { formatUserType } from "../../utils/formatters";
+import { ShiftBadge, useLogoutGuard } from "../Shift";
 import styles from "./Header.module.css";
 
 export function Header() {
-  const { user, clearAuth } = useAuthStore();
-  const navigate = useNavigate();
-
-  function handleLogout() {
-    clearAuth();
-    navigate("/login");
-  }
+  const { user } = useAuthStore();
+  const logout = useLogoutGuard();
 
   return (
     <header className={styles.header}>
@@ -23,6 +18,7 @@ export function Header() {
       </div>
 
       <div className={styles.right}>
+        <ShiftBadge />
         <div className={styles.onlineBadge}>
           <span className={styles.onlineDot} />
           Online
@@ -33,9 +29,10 @@ export function Header() {
             <div className={styles.userRole}>{formatUserType(user.user_type)} · ID: {user.username.toUpperCase()}</div>
           </div>
         )}
-        <button className={styles.logoutBtn} onClick={handleLogout}>
+        <button className={styles.logoutBtn} onClick={logout.request}>
           Logout
         </button>
+        {logout.dialog}
       </div>
     </header>
   );

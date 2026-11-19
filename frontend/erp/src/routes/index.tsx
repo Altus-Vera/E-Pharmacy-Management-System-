@@ -23,6 +23,8 @@ import { SalesReturnsPage } from "../pages/SalesReturns";
 import { OutletsPage } from "../pages/Outlets";
 import { StockTransfersPage } from "../pages/StockTransfers";
 import { useAuthStore } from "../store/authStore";
+import { ShiftsPage } from "../pages/Shifts";
+import { RxQueuePage } from "../pages/RxQueue";
 import { canAccess } from "../utils/roles";
 import { SupplierReturnsPage } from "../pages/SupplierReturns";
 import { AuditLogPage } from "../pages/AuditLog";
@@ -68,12 +70,14 @@ export function AppRoutes() {
         <Route path="purchase-orders" element={<Guard path="/purchase-orders"><PurchaseOrdersPage /></Guard>} />
         <Route path="stock-locations" element={<Guard path="/stock-locations"><StockLocationsPage /></Guard>} />
         <Route path="uom" element={<Guard path="/uom"><UnitsOfMeasurePage /></Guard>} />
+        <Route path="rx-queue" element={<Guard path="/rx-queue"><RxQueuePage /></Guard>} />
         <Route path="prescription-scans" element={<Guard path="/prescription-scans"><PrescriptionScansPage /></Guard>} />
         <Route path="dose-codes" element={<Guard path="/dose-codes"><DoseCodesPage /></Guard>} />
         <Route path="stock-view" element={<Guard path="/stock-view"><StockViewPage /></Guard>} />
         <Route path="grn" element={<Guard path="/grn"><GoodsReceiptsPage /></Guard>} />
         <Route path="purchase-requisitions" element={<Guard path="/purchase-requisitions"><PurchaseRequisitionsPage /></Guard>} />
         <Route path="purchase-invoices" element={<Guard path="/purchase-invoices"><PurchaseInvoicesPage /></Guard>} />
+        <Route path="shifts" element={<Guard path="/shifts"><ShiftsPage /></Guard>} />
         <Route path="sales-returns" element={<Guard path="/sales-returns"><SalesReturnsPage /></Guard>} />
         <Route path="outlets" element={<Guard path="/outlets"><OutletsPage /></Guard>} />
         <Route path="stock-transfers" element={<Guard path="/stock-transfers"><StockTransfersPage /></Guard>} />
