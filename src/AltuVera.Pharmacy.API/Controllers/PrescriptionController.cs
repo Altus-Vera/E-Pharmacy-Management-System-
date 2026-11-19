@@ -63,18 +63,21 @@ public class PrescriptionController(AppDbContext db, IWebHostEnvironment env) : 
 
     [Authorize(Roles = R.Pos)]
     [HttpPost("{id:int}/scan")]
-    public async Task<IActionResult> UploadScan(int id, IFormFile file)
+    [RequestSizeLimit(12_000_000)]
+    public async Task<IActionResult> UploadScan(int id, IFormFile file, CancellationToken ct)
     {
         var prescription = await db.Prescriptions.FindAsync(id);
         if (prescription is null) return NotFound();
 
+        if (file.Length > 10_000_000) return BadRequest(new { detail = "The scan is over 10 MB. Send a smaller file." });
+        var bytes = await FileSniffer.ReadAllAsync(file, ct);
+        var type = FileSniffer.Detect(bytes);
+        if (type is null or "image/gif") return BadRequest(new { detail = "Use a JPG, PNG or WebP photo, or a PDF." });
+
         var uploadsDir = Path.Combine(env.ContentRootPath, "..", "uploads", "prescriptions");
         Directory.CreateDirectory(uploadsDir);
-        var ext = Path.GetExtension(file.FileName);
-        var fileName = $"rx_{id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{ext}";
-        var fullPath = Path.Combine(uploadsDir, fileName);
-        await using var stream = System.IO.File.Create(fullPath);
-        await file.CopyToAsync(stream);
+        var fileName = $"rx_{id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{FileSniffer.ExtFor(type)}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(uploadsDir, fileName), bytes, ct);
 
         prescription.ScanFilePath = $"prescriptions/{fileName}";
         prescription.UpdatedAt = DateTime.UtcNow;

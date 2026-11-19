@@ -36,17 +36,13 @@ public class InvoiceOcrController(InvoiceOcr ocr, PrescriptionOcr vision, IWebHo
         var i = 0;
         foreach (var f in files)
         {
-            var type = f.ContentType.ToLowerInvariant();
-            if (!Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo, or a PDF." });
-            var max = type == "application/pdf" ? 10_000_000 : 5_000_000;
-            if (f.Length > max) return BadRequest(new { detail = $"{f.FileName} is over {max / 1_000_000} MB. Send a smaller file." });
-            using var ms = new MemoryStream();
-            await f.CopyToAsync(ms, ct);
-            if (type == "application/pdf" && !ms.ToArray().AsSpan(0, Math.Min(5, (int)ms.Length)).SequenceEqual("%PDF-"u8))
-                return BadRequest(new { detail = $"{f.FileName} is not a valid PDF." });
-            images.Add((ms.ToArray(), type));
-            var ext = type switch { "image/png" => ".png", "image/webp" => ".webp", "image/gif" => ".gif", "application/pdf" => ".pdf", _ => ".jpg" };
-            await System.IO.File.WriteAllBytesAsync(Path.Combine(Dir, $"{id}_{i++}{ext}"), ms.ToArray(), ct);
+            if (f.Length > 10_000_000) return BadRequest(new { detail = $"{f.FileName} is over 10 MB. Send a smaller file." });
+            var bytes = await FileSniffer.ReadAllAsync(f, ct);
+            var type = FileSniffer.Detect(bytes);
+            if (type is null || !Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo, or a PDF." });
+            if (type != "application/pdf" && bytes.Length > 5_000_000) return BadRequest(new { detail = $"{f.FileName} is over 5 MB. Send a smaller file." });
+            images.Add((bytes, type));
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(Dir, $"{id}_{i++}{FileSniffer.ExtFor(type)}"), bytes, ct);
         }
         try
         {

@@ -77,6 +77,30 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// set at send time so they survive the exception handler clearing the response
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        var h = ctx.Response.Headers;
+        h["X-Content-Type-Options"] = "nosniff";
+        h["X-Frame-Options"] = "DENY";
+        h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        if (ctx.Request.IsHttps)
+            h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        return Task.CompletedTask;
+    });
+    await next();
+});
+
+// logs the full exception; the client only gets a generic message
+app.UseExceptionHandler(e => e.Run(ctx =>
+{
+    ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    return ctx.Response.WriteAsJsonAsync(new { detail = "Something went wrong on the server. Please try again." });
+}));
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -84,17 +108,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRateLimiter();
-
-app.Use(async (ctx, next) =>
-{
-    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    ctx.Response.Headers["X-Frame-Options"] = "DENY";
-    ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    ctx.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-    if (ctx.Request.IsHttps)
-        ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-    await next();
-});
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
