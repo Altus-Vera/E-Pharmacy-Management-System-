@@ -30,6 +30,10 @@ public class UserController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] UserCreateRequest req)
     {
+        if (!Enum.TryParse<UserType>(req.UserType.Replace("_", ""), true, out var userType) || !Enum.IsDefined(userType))
+            return BadRequest(new { detail = "Unknown user type" });
+        if (userType == UserType.SystemAdministrator && !User.IsInRole(R.Admin))
+            return StatusCode(403, new { detail = "Only a System Administrator can create administrator accounts." });
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return BadRequest(new { detail = "Username already exists" });
 
@@ -37,7 +41,7 @@ public class UserController(AppDbContext db) : ControllerBase
         {
             Name = req.Name,
             Nic = req.Nic,
-            UserType = Enum.Parse<UserType>(req.UserType, true),
+            UserType = userType,
             Address = req.Address,
             ContactNumber = req.ContactNumber,
             Username = req.Username,
@@ -57,6 +61,9 @@ public class UserController(AppDbContext db) : ControllerBase
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
+        // stops a manager resetting an admin's password or disabling the admin account
+        if (user.UserType == UserType.SystemAdministrator && !User.IsInRole(R.Admin))
+            return StatusCode(403, new { detail = "Only a System Administrator can change administrator accounts." });
 
         if (req.Name is not null) user.Name = req.Name;
         if (req.ContactNumber is not null) user.ContactNumber = req.ContactNumber;

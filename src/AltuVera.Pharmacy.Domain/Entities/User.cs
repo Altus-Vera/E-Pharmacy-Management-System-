@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using AltuVera.Pharmacy.Domain.Enums;
 
 namespace AltuVera.Pharmacy.Domain.Entities;
@@ -11,6 +12,7 @@ public class User
     public string? Address { get; set; }
     public string? ContactNumber { get; set; }
     public string Username { get; set; } = string.Empty;
+    [JsonIgnore]
     public string HashedPassword { get; set; } = string.Empty;
     public string? Remarks { get; set; }
     public bool IsActive { get; set; } = true;
