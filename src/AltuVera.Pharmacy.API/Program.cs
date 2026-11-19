@@ -56,14 +56,12 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("login", o =>
-    {
-        o.PermitLimit = 10;
-        o.Window = TimeSpan.FromMinutes(1);
-        o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        o.QueueLimit = 0;
-    });
+    options.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (ctx, ct) => new ValueTask(ctx.HttpContext.Response.WriteAsJsonAsync(
+        new { detail = "Too many login attempts. Wait a minute and try again." }, ct));
 });
 
 builder.Services.AddCors(options =>
@@ -138,6 +136,10 @@ app.MapControllers();
 
 app.MapGet("/api/health", () => new { status = "ok" });
 
-await AltuVera.Pharmacy.Infrastructure.Data.DatabaseSeeder.SeedAsync(app.Services);
+// integration tests swap in their own database and data
+if (!app.Environment.IsEnvironment("Testing"))
+    await AltuVera.Pharmacy.Infrastructure.Data.DatabaseSeeder.SeedAsync(app.Services);
 
 app.Run();
+
+public partial class Program;

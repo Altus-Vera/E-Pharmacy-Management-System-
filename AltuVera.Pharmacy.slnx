@@ -5,4 +5,7 @@
     <Project Path="src/AltuVera.Pharmacy.Domain/AltuVera.Pharmacy.Domain.csproj" />
     <Project Path="src/AltuVera.Pharmacy.Infrastructure/AltuVera.Pharmacy.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AltuVera.Pharmacy.API.Tests/AltuVera.Pharmacy.API.Tests.csproj" />
+  </Folder>
 </Solution>
