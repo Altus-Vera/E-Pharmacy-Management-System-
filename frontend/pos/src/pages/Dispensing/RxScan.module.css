@@ -1,4 +1,4 @@
-.wrap { display: grid; grid-template-columns: minmax(280px, 0.9fr) 1.4fr; gap: 16px; min-height: 60vh; }
+.wrap { display: grid; grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr); gap: 16px; min-height: 60vh; }
 .photoCol { display: flex; flex-direction: column; gap: 8px; }
 .photoBox { flex: 1; min-height: 360px; max-height: 64vh; overflow: auto; border: 1.5px solid #cbd5e1; border-radius: 10px; background: #0f172a; }
 .photo { display: block; width: 100%; transform-origin: top left; }
@@ -39,7 +39,10 @@
 .remove:hover { color: #991b1b; }
 .note { font-size: 0.78rem; color: #92400e; }
 
-.grid { display: grid; grid-template-columns: 2.4fr 0.7fr 1.4fr 0.6fr 0.6fr; gap: 8px; }
+.grid { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 0.7fr) minmax(0, 1.4fr) minmax(0, 0.6fr) minmax(0, 0.6fr); gap: 8px; }
+/* long product names must not push the dose / frequency / days fields off screen */
+.grid > * { min-width: 0; }
+.grid select, .grid input { width: 100%; min-width: 0; box-sizing: border-box; }
 .f { display: flex; flex-direction: column; gap: 3px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; color: #475569; }
 .f input, .f select { font: inherit; font-size: 0.88rem; font-weight: 600; text-transform: none; padding: 5px 6px; border: 1.5px solid #94a3b8; border-radius: 6px; background: #fff; color: #0f172a; min-width: 0; }
 .search { display: flex; flex-direction: column; gap: 4px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px; background: #f8fafc; }

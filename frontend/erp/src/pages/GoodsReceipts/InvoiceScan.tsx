@@ -93,7 +93,7 @@ export function InvoiceScanModal({ open, onClose, onApply }: { open: boolean; on
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Scan supplier invoice" size="xl">
+    <Modal open={open} onClose={onClose} title="Auto GRN — scan supplier invoice" size="xl">
       <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 0.8fr) 2fr", gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {previews.length ? (
