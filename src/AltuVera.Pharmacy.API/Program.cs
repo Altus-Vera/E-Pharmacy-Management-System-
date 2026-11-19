@@ -1,7 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using AltuVera.Pharmacy.Infrastructure;
 using AltuVera.Pharmacy.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -23,6 +25,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtConfig["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig["SecretKey"]!)),
         };
+        // Read JWT from httpOnly cookie when Authorization header is absent
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                if (string.IsNullOrEmpty(ctx.Token))
+                    ctx.Token = ctx.Request.Cookies["access_token"];
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -42,6 +54,18 @@ builder.Services.AddControllers(o => o.Filters.AddService<AltuVera.Pharmacy.API.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("login", o =>
+    {
+        o.PermitLimit = 10;
+        o.Window = TimeSpan.FromMinutes(1);
+        o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        o.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
 builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
         policy.WithOrigins(
@@ -59,18 +83,43 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseRateLimiter();
+
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    ctx.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    if (ctx.Request.IsHttps)
+        ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+    await next();
+});
+
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Serve prescription scans
+// Serve prescription scans — requires authentication
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "..", "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
-app.UseStaticFiles(new StaticFileOptions
+var uploadsRoot = Path.GetFullPath(uploadsPath) + Path.DirectorySeparatorChar;
+app.MapGet("/uploads/{**path}", (string path) =>
 {
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(Path.GetFullPath(uploadsPath)),
-    RequestPath = "/uploads",
-});
+    var fullPath = Path.GetFullPath(Path.Combine(uploadsPath, path));
+    if (!fullPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest();
+    if (!File.Exists(fullPath))
+        return Results.NotFound();
+    var contentType = Path.GetExtension(fullPath).ToLower() switch
+    {
+        ".pdf" => "application/pdf",
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        _ => "application/octet-stream"
+    };
+    return Results.File(fullPath, contentType);
+}).RequireAuthorization();
 
 app.MapControllers();
 

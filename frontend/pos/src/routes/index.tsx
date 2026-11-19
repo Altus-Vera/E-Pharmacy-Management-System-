@@ -8,8 +8,8 @@ import { PrescriptionPage } from "../pages/Prescription";
 import { useAuthStore } from "../store/authStore";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token);
-  if (!token) return <Navigate to="/login" replace />;
+  const user = useAuthStore((s) => s.user);
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 

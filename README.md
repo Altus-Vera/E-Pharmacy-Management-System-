@@ -73,10 +73,10 @@ Seeded automatically on first `dotnet run`:
 
 | Username | Password | Role |
 |---|---|---|
-| `admin` | `Admin@1234` | System Administrator |
-| `pharmacist` | `Pharm@1234` | Pharmacist |
-| `stockmgr` | `Stock@1234` | Stock Manager |
-| `manager` | `Manager@1234` | Pharmacy Manager |
+| `admin` | `Admin@123` | System Administrator |
+| `pharmacist` | `Pharm@123` | Pharmacist |
+| `stockmgr` | `Stock@123` | Stock Manager |
+| `manager` | `Manager@123` | Pharmacy Manager |
 
 ## API Docs
 
