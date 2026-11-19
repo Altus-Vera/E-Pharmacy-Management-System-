@@ -4,10 +4,11 @@ import { customerService } from "../../services/customer.service";
 import { doctorService } from "../../services/doctor.service";
 import { invoiceService } from "../../services/invoice.service";
 import api from "../../services/api";
-import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, baseUnit, priceFor } from "../../store/cartStore";
+import { useCartStore, sellableQty, sellableBatches, unitsPer, defaultUnit, allowedUnits, unitLabel, unitChoice, baseUnit, priceFor } from "../../store/cartStore";
 import { DaysCalcModal, BillQuoteModal, SellTag } from "./DaysCalculator";
 import { RxScanModal } from "./RxScan";
 import { RxCopyModal, RxQueueModal, uploadRxCopy } from "./RxCopy";
+import { ItemSearchModal, type PickOptions } from "./ItemSearch";
 import { useAuthStore } from "../../store/authStore";
 import { useShiftStore } from "../../store/shiftStore";
 import { Button } from "../../components/ui/Button";
@@ -111,6 +112,10 @@ export function DispensingPage() {
   // drug search
   const [drugQuery, setDrugQuery] = useState("");
   const [drugResults, setDrugResults] = useState<Drug[]>([]);
+  // item search pop-up (typing in the search bar opens it; barcode + Enter still adds directly)
+  const [itemSearch, setItemSearch] = useState<{ open: boolean; q: string }>({ open: false, q: "" });
+  const popupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOpts = useRef<PickOptions | null>(null);
   const [searching, setSearching] = useState(false);
 
   // modal routing
@@ -198,7 +203,7 @@ export function DispensingPage() {
   const {
     items, customer, doctor, paymentMode, notes, billDiscount, selectedId, heldBills,
     setCustomer, setDoctor, setPaymentMode, setNotes, setBillDiscount, select, selectNext,
-    addItem, updateQuantity, updateDiscount, removeItem, clearCart, holdBill, recallBill, deleteHeld, changeUnit, applyCalc,
+    addItem, updateQuantity, updateDiscount, removeItem, clearCart, holdBill, recallBill, deleteHeld, changeUnit, changeBatch, applyCalc,
     subtotal, totalDiscount, total,
   } = useCartStore();
 
@@ -206,8 +211,17 @@ export function DispensingPage() {
 
   // ── drug search ────────────────────────────────────────────────────────────
 
+  function openItemSearch(q: string) {
+    if (popupTimer.current) clearTimeout(popupTimer.current);
+    setDrugQuery(""); setDrugResults([]);
+    setItemSearch({ open: true, q });
+  }
+
   const searchDrugs = useCallback(async (q: string) => {
     setDrugQuery(q);
+    // a pause in typing opens the search pop-up; a barcode scanner finishes with Enter well before this
+    if (popupTimer.current) clearTimeout(popupTimer.current);
+    if (q.trim().length >= 2) popupTimer.current = setTimeout(() => openItemSearch(q), 450);
     if (q.length < 2) { setDrugResults([]); return; }
     setSearching(true);
     try {
@@ -229,16 +243,16 @@ export function DispensingPage() {
 
   // Barcode scanners type the code then send Enter: add an exact item-code match straight away.
   async function handleSearchEnter() {
+    if (popupTimer.current) clearTimeout(popupTimer.current);
     const q = drugQuery.trim();
-    if (!q) return;
+    if (!q) { openItemSearch(""); return; }
     let list = drugResults;
     if (!list.length || searching) {
       try { list = await drugService.search(q); setDrugResults(list); } catch { list = []; }
     }
     const exact = list.find((d) => d.item_code.toLowerCase() === q.toLowerCase());
-    const pick = exact ?? (list.length === 1 ? list[0] : null);
-    if (pick) handleAddDrug(pick);
-    else if (!list.length) notify(`No item matches "${q}"`, "warn");
+    if (exact) handleAddDrug(exact);
+    else openItemSearch(q);   // not a barcode: choose item, batch and unit in the pop-up
   }
 
   // ── customer / doctor ──────────────────────────────────────────────────────
@@ -290,14 +304,17 @@ export function DispensingPage() {
     return true;
   }
 
-  function handleAddDrug(drug: Drug) {
+  /** opts = batch / unit / qty already chosen (item search pop-up); without it the batch chooser opens when needed. */
+  function handleAddDrug(drug: Drug, opts?: PickOptions) {
     if (!canAdd(drug)) return;
     // Show POM advisory if no doctor linked — but don't block
     if ((drug.is_prescription_only || drug.is_high_alert || drug.is_narcotic) && !prescription) {
+      pendingOpts.current = opts ?? null;
       setPomWarningDrug(drug);
       return;
     }
-    pickBatchOrAdd(drug);
+    if (opts) finishAdd(drug, opts.batchId, opts.unit, opts.qty);
+    else pickBatchOrAdd(drug);
   }
 
   /** Base units of this batch not yet on the bill. */
@@ -313,8 +330,9 @@ export function DispensingPage() {
     finishAdd(drug, open[0]?.id);
   }
 
-  function finishAdd(drug: Drug, batchId?: number) {
-    addItem(drug, 1, undefined, batchId);
+  function finishAdd(drug: Drug, batchId?: number, unit?: SaleUnit, qty = 1) {
+    const added = addItem(drug, qty, unit, batchId);
+    if (added < qty) notify(added ? `Only ${added} added — not enough sellable stock` : `${drug.brand_name}: not enough sellable stock`, "warn");
     setBatchPick(null);
     setDrugQuery("");
     setDrugResults([]);
@@ -323,9 +341,11 @@ export function DispensingPage() {
 
   function addPomAnyway() {
     if (pomWarningDrug) {
-      const d = pomWarningDrug;
+      const d = pomWarningDrug, o = pendingOpts.current;
       setPomWarningDrug(null);
-      pickBatchOrAdd(d);
+      pendingOpts.current = null;
+      if (o) finishAdd(d, o.batchId, o.unit, o.qty);
+      else pickBatchOrAdd(d);
     }
   }
 
@@ -524,7 +544,7 @@ export function DispensingPage() {
     switch (action) {
       case "patient":    setModal("customer"); break;
       case "prescriber": setModal("doctor"); break;
-      case "search":     searchRef.current?.focus(); break;
+      case "search":     openItemSearch(""); break;
       case "priceCheck": setPcQuery(""); setPcResults([]); setModal("priceCheck"); break;
       case "qty":
         if (needSelected()) { setInputVal(String(selectedItem!.quantity)); setModal("qty"); }
@@ -794,7 +814,7 @@ export function DispensingPage() {
       F1: "search", F2: "priceCheck", F4: "patient", F5: "prescriber",
       F6: "hold", F7: "recall", F8: "qty", F9: "lineDisc", F10: "billDisc",
     };
-    if (modal || pomWarningDrug || batchPick || lastSale || calcFor || quoteOpen || rxCopyOpen || rxQueueOpen) return;
+    if (modal || pomWarningDrug || batchPick || lastSale || calcFor || quoteOpen || rxCopyOpen || rxQueueOpen || itemSearch.open) return;
     if (fnMap[e.key]) { e.preventDefault(); runFn(fnMap[e.key]); return; }
     if (e.key === "F3") { e.preventDefault(); void runAction("reprint"); return; }
     if (e.key === "F12") { e.preventDefault(); startCheckout(); return; }
@@ -914,48 +934,6 @@ export function DispensingPage() {
             )}
           </div>
 
-          {/* Drug results dropdown */}
-          {drugQuery.length >= 2 && (
-            <div className={styles.drugDropdown}>
-              {searching && <div className={styles.dropdownMsg}>Searching…</div>}
-              {!searching && drugResults.length === 0 && (
-                <div className={styles.dropdownMsg}>No drugs found for "{drugQuery}"</div>
-              )}
-              {drugResults.map((drug) => (
-                <div key={drug.id} className={styles.drugRow} onClick={() => handleAddDrug(drug)}>
-                  <div className={styles.drugRowLeft}>
-                    <div className={styles.drugName}>
-                      {drug.brand_name}
-                      {drug.is_prescription_only && <span className={styles.pomTag}>POM</span>}
-                      {drug.is_high_alert && <span className={styles.alertTag}>HIGH ALERT</span>}
-                      {isColdChain(drug) && <span className={styles.coldTag}>2–8°C</span>}
-                      <SellTag drug={drug} compact />
-                      {expiryWarning(drug.expiry_date) === "danger" && <span className={styles.alertTag}>EXPIRED</span>}
-                    </div>
-                    <div className={styles.drugGeneric}>{drug.generic_name}{drug.strength ? ` · ${drug.strength}` : ""} · {drug.dosage_form}</div>
-                  </div>
-                  <div className={styles.drugRowRight}>
-                    {(() => {
-                      const bs = sellableBatches(drug);
-                      const first = bs[0];
-                      const avail = sellableQty(drug);
-                      const nextPrice = bs.find((b) => first && b.selling_price !== first.selling_price);
-                      return <>
-                        <div className={styles.drugPrice}>{formatCurrency(first ? first.selling_price : drug.unit_price)}</div>
-                        <div className={styles.drugStock} style={{ color: avail <= drug.reorder_level ? "var(--color-danger)" : undefined }}>
-                          Stock: {avail}{bs.length > 1 ? ` · ${bs.length} batches` : ""}
-                        </div>
-                        {avail === 0 && <div className={styles.outOfStock}>{drug.quantity > 0 ? "EXPIRED STOCK" : "OUT OF STOCK"}</div>}
-                        {(first?.batch_number ?? drug.batch_number) && <div className={styles.batchTag}>{first?.batch_number ?? drug.batch_number}{first ? ` · ${first.quantity_remaining} left` : ""}</div>}
-                        {nextPrice && <div className={styles.nextBatch}>Next batch {formatCurrency(nextPrice.selling_price)}</div>}
-                      </>;
-                    })()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Dispensing Tray */}
           <div className={styles.tray}>
             <div className={styles.trayHeader}>
@@ -1012,10 +990,17 @@ export function DispensingPage() {
                               </button>
                             </div>
                           </td>
-                          <td className={styles.tdBatch}>
-                            {bno && (
-                              <div className={styles.batchNum}>{bno}</div>
-                            )}
+                          <td className={styles.tdBatch} onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              // every line can be moved to another batch that still has room
+                              const opts = item.batch ? sellableBatches(item.drug).filter((b) => b.id === item.batch!.id || batchRoom(item.drug, b) >= item.units_per) : [];
+                              return opts.length > 1 ? (
+                                <select className={styles.batchSelect} value={item.batch!.id} title="Batch for this line"
+                                  onChange={(e) => { const moved = changeBatch(item.key, Number(e.target.value)); if (moved < item.quantity) notify(moved ? `Only ${moved} fit in that batch — the rest stays on ${bno}` : "That batch has no room left", "warn"); }}>
+                                  {opts.map((b) => <option key={b.id} value={b.id}>{b.batch_number ?? "—"} · exp {b.expiry_date ? formatDate(b.expiry_date) : "—"} · {formatCurrency(priceFor(item.drug, b, item.sale_unit))}</option>)}
+                                </select>
+                              ) : bno ? <div className={styles.batchNum}>{bno}</div> : null;
+                            })()}
                             {item.batch && <div className={styles.batchLeft}>{item.batch.quantity_remaining - item.quantity * item.units_per} {baseUnit(item.drug)}s left in batch</div>}
                             {exp && (
                               <div className={styles.expiryDate} style={{ color: warn === "danger" ? "var(--color-danger)" : warn === "warning" ? "var(--color-warning)" : undefined }}>
@@ -1026,9 +1011,9 @@ export function DispensingPage() {
                           <td className={styles.tdUnit} onClick={(e) => e.stopPropagation()}>
                             {allowedUnits(item.drug).length > 1 ? (
                               <select className={styles.unitSelect} value={item.sale_unit} onChange={(e) => changeUnit(item.key, e.target.value as SaleUnit)}>
-                                {allowedUnits(item.drug).map((u) => <option key={u} value={u}>{unitLabel(item.drug, u)}</option>)}
+                                {allowedUnits(item.drug).map((u) => <option key={u} value={u}>{unitChoice(item.drug, u)}</option>)}
                               </select>
-                            ) : <span className={styles.unitText}>{unitLabel(item.drug, item.sale_unit)}</span>}
+                            ) : <span className={styles.unitText} title="Set units per card / pack in the ERP Drug Catalog to sell this item by card or pack">{unitChoice(item.drug, item.sale_unit)}</span>}
                           </td>
                           <td className={styles.tdQty}>
                             <div className={styles.qtyControl}>
@@ -1803,6 +1788,13 @@ export function DispensingPage() {
         onPrint={(results, days) => printQuote(results, days)} />
 
       {/* Prescription photo (WhatsApp) → AI reading → cashier checks every line */}
+      <ItemSearchModal open={itemSearch.open} initialQuery={itemSearch.q} items={items}
+        onClose={() => { setItemSearch({ open: false, q: "" }); searchRef.current?.focus(); }}
+        onPick={(d, o, keep) => {
+          const pom = (d.is_prescription_only || d.is_high_alert || d.is_narcotic) && !prescription;
+          if (!keep || pom) setItemSearch({ open: false, q: "" });
+          handleAddDrug(d, o);
+        }} />
       <RxCopyModal open={rxCopyOpen} files={rxFiles} note={rxNote} onClose={() => setRxCopyOpen(false)}
         onSave={(f, n) => { setRxFiles(f); setRxNote(n); setRxCopyOpen(false); searchRef.current?.focus(); }} />
       <RxQueueModal open={rxQueueOpen} onClose={() => { setRxQueueOpen(false); searchRef.current?.focus(); }} />

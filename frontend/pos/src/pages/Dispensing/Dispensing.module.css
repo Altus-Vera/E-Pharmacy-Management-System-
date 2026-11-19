@@ -1654,3 +1654,7 @@
 .batchPickTable td { padding: 8px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
 .batchPickOn td { background: #f0fdf4; }
 .batchPickFifo { margin-left: 6px; font-size: 10px; font-weight: 700; color: #1A7F43; background: #dcfce7; border-radius: 4px; padding: 1px 5px; }
+
+/* per-line batch picker */
+.batchSelect { max-width: 100%; font-size: 12px; font-weight: 600; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #0f172a; cursor: pointer; }
+.batchSelect:focus { outline: 2px solid #86efac; }

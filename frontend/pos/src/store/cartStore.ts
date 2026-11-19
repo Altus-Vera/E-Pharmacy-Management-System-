@@ -81,6 +81,14 @@ export function unitLabel(d: Drug, u: SaleUnit, qty?: number): string {
   return `${qty !== undefined ? n + " " : ""}${pl(bu)}`;
 }
 
+/** Name for unit pickers: "Loose · tablet", "Card · 10 tablets", "Pack · 100 tablets". */
+export function unitChoice(d: Drug, u: SaleUnit): string {
+  const bu = baseUnit(d), n = unitsPer(d, u);
+  if (u === "strip") return `Card · ${n} ${bu}s`;
+  if (u === "pack") return n > 1 ? `Pack · ${n} ${bu}s` : `Pack · ${bu}`;
+  return `Loose · ${bu}`;
+}
+
 /** Sellable batches, oldest received first (FIFO). The API already filters and orders them. */
 export function sellableBatches(drug: Drug): DrugBatch[] {
   return (drug.batches ?? []).filter((b) => b.quantity_remaining > 0);
@@ -112,8 +120,10 @@ interface CartState {
   addItem: (drug: Drug, quantity?: number, unit?: SaleUnit, batchId?: number) => number;
   updateQuantity: (key: string, quantity: number) => void;
   updateDiscount: (key: string, discountRate: number) => void;
-  /** Switch a line to another sale unit (tablet ↔ strip ↔ pack), keeping 1 of the new unit. */
+  /** Switch a line to another sale unit (loose ↔ card ↔ pack). Keeps the line's batch; quantity converts where it can (min 1). */
   changeUnit: (key: string, unit: SaleUnit) => void;
+  /** Move a line to another batch (price follows the batch). Quantity is capped by what that batch still holds. Returns units moved. */
+  changeBatch: (key: string, batchId: number) => number;
   /** Replace a drug's lines with a days-calculator result (quantities, batches, prices, directions). */
   applyCalc: (drug: Drug, calc: CalcResult) => void;
   removeItem: (key: string) => void;
@@ -242,8 +252,41 @@ export const useCartStore = create<CartState>((set, get) => ({
   changeUnit: (key, unit) => {
     const line = get().items.find((i) => i.key === key);
     if (!line || line.sale_unit === unit) return;
+    const per = unitsPer(line.drug, unit);
+    const qty = Math.max(1, Math.floor((line.quantity * line.units_per) / per));
+    const before = get().items;
+    const at = before.findIndex((i) => i.key === key);
     get().removeItem(key);
-    get().addItem(line.drug, 1, unit);
+    if (get().addItem(line.drug, qty, unit, line.batch?.id) === 0) { set({ items: before, selectedId: key }); return; }
+    // keep the line where it was on the bill
+    const oldKeys = new Set(before.map((i) => i.key));
+    const now = get().items, fresh = now.filter((i) => !oldKeys.has(i.key)), rest = now.filter((i) => oldKeys.has(i.key));
+    set({ items: [...rest.slice(0, at), ...fresh, ...rest.slice(at)] });
+  },
+
+  changeBatch: (key, batchId) => {
+    const line = get().items.find((i) => i.key === key);
+    if (!line || line.batch?.id === batchId) return 0;
+    const target = sellableBatches(line.drug).find((b) => b.id === batchId);
+    if (!target) return 0;
+    const room = Math.floor((target.quantity_remaining - usedInBatch(get().items, line.drug.id, batchId, key)) / line.units_per);
+    const move = Math.min(line.quantity, Math.max(room, 0));
+    if (move <= 0) return 0;
+    const keep = line.quantity - move;
+    // what doesn't fit stays on the old batch line
+    set({ items: keep > 0
+      ? get().items.map((i) => (i.key === key ? { ...i, quantity: keep, line_total: calcLineTotal(i.unit_price, keep, i.discount_rate) } : i))
+      : get().items.filter((i) => i.key !== key) });
+    const newKey = lineKey(line.drug.id, batchId, line.sale_unit);
+    const price = priceFor(line.drug, target, line.sale_unit);
+    const ex = get().items.find((i) => i.key === newKey);
+    set({
+      items: ex
+        ? get().items.map((i) => (i.key === newKey ? { ...i, quantity: i.quantity + move, line_total: calcLineTotal(i.unit_price, i.quantity + move, i.discount_rate) } : i))
+        : [...get().items, { ...line, key: newKey, batch: target, unit_price: price, quantity: move, line_total: calcLineTotal(price, move, line.discount_rate) }],
+      selectedId: newKey,
+    });
+    return move;
   },
 
   applyCalc: (drug, calc) => {
