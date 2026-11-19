@@ -53,17 +53,16 @@ public class ReportsExtraController(AppDbContext db) : ControllerBase
     private async Task<List<MovingRow>> Moving(int days)
     {
         var since = DateTime.UtcNow.AddDays(-days);
-        var sold = await db.Invoices.AsNoTracking()
+        var agg = await db.Invoices.AsNoTracking()
             .Where(i => i.Status == InvoiceStatus.Completed && i.CreatedAt >= since)
-            .SelectMany(i => i.Items.Select(it => new { it.DrugId, it.Quantity, it.LineTotal, i.Id }))
-            .ToListAsync();
+            .SelectMany(i => i.Items.Select(it => new { it.DrugId, it.Quantity, it.LineTotal, InvoiceId = i.Id }))
+            .GroupBy(s => s.DrugId)
+            .Select(g => new { DrugId = g.Key, Qty = g.Sum(x => x.Quantity), Rev = g.Sum(x => x.LineTotal), Tx = g.Select(x => x.InvoiceId).Distinct().Count() })
+            .ToDictionaryAsync(x => x.DrugId);
         var drugs = await db.Drugs.AsNoTracking().Where(d => d.IsActive).ToListAsync();
-        var agg = sold.GroupBy(s => s.DrugId).ToDictionary(g => g.Key, g => (qty: g.Sum(x => x.Quantity), rev: g.Sum(x => x.LineTotal), tx: g.Select(x => x.Id).Distinct().Count()));
-        return drugs.Select(d =>
-        {
-            agg.TryGetValue(d.Id, out var a);
-            return new MovingRow(d.Id, d.ItemCode, d.BrandName, d.GenericName, d.Strength, a.qty, a.tx, a.rev, d.Quantity);
-        }).ToList();
+        return drugs.Select(d => agg.TryGetValue(d.Id, out var a)
+            ? new MovingRow(d.Id, d.ItemCode, d.BrandName, d.GenericName, d.Strength, a.Qty, a.Tx, a.Rev, d.Quantity)
+            : new MovingRow(d.Id, d.ItemCode, d.BrandName, d.GenericName, d.Strength, 0, 0, 0, d.Quantity)).ToList();
     }
 
     [HttpGet("fast-moving")]

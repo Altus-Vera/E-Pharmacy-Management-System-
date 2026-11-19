@@ -32,19 +32,22 @@ public class BillPrescriptionController(AppDbContext db, IWebHostEnvironment env
         var inv = await db.Invoices.FindAsync([invoiceId], ct);
         if (inv is null) return NotFound(new { detail = "Bill not found." });
         if (files.Count is 0 or > 4) return BadRequest(new { detail = "Attach 1 to 4 pages of the prescription." });
+        var pages = new List<(byte[] Bytes, string Type)>();
         foreach (var f in files)
         {
-            if (!Types.ContainsKey(f.ContentType.ToLowerInvariant())) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo, or a PDF." });
             if (f.Length > 8_000_000) return BadRequest(new { detail = $"{f.FileName} is over 8 MB." });
+            var bytes = await FileSniffer.ReadAllAsync(f, ct);
+            var type = FileSniffer.Detect(bytes);
+            if (type is null || !Types.ContainsKey(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo, or a PDF." });
+            pages.Add((bytes, type));
         }
 
         Directory.CreateDirectory(Dir);
         var saved = new List<string>();
-        foreach (var f in files)
+        foreach (var (bytes, type) in pages)
         {
-            var name = $"{Guid.NewGuid():N}{Types[f.ContentType.ToLowerInvariant()]}";
-            await using var fs = System.IO.File.Create(Path.Combine(Dir, name));
-            await f.CopyToAsync(fs, ct);
+            var name = $"{Guid.NewGuid():N}{Types[type]}";
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(Dir, name), bytes, ct);
             saved.Add(name);
         }
 

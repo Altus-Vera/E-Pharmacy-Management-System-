@@ -138,8 +138,8 @@ export function GoodsReceiptsPage() {
           Record goods received from suppliers — updates stock automatically
         </span>
         <div style={{ display: "flex", gap: "var(--space-2)" }}>
-          <Button variant="ghost" onClick={() => setScanOpen(true)}>📷 Scan Invoice</Button>
-          <Button variant="primary" onClick={openNew}>+ New GRN</Button>
+          <Button variant="secondary" onClick={() => setScanOpen(true)} title="AI reads the supplier invoice (photo or PDF) and fills the GRN">📷 Auto GRN (Scan Invoice)</Button>
+          <Button variant="primary" onClick={openNew} title="Type the received goods by hand">+ Manual GRN</Button>
         </div>
       </div>
 
@@ -157,12 +157,12 @@ export function GoodsReceiptsPage() {
         emptyMessage={loading ? "Loading…" : "No GRNs found."}
       />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Goods Receipt Note" size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={fromScan ? "Auto GRN — check and create" : "Manual GRN — Goods Receipt Note"} size="lg">
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
           {error && <div className={styles.errorBox}>{error}</div>}
           {fromScan
             ? <div style={{ background: "#fef3c7", color: "#92400e", padding: "6px 10px", borderRadius: 6, fontSize: "var(--font-size-sm)" }}>Lines filled from a scanned invoice. Check selling prices, then create the GRN.</div>
-            : <div style={{ fontSize: "var(--font-size-sm)" }}>Have the supplier's invoice? <button type="button" onClick={() => setScanOpen(true)} style={{ border: "none", background: "none", color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", padding: 0 }}>📷 Scan it to fill the lines</button></div>}
+            : <div style={{ fontSize: "var(--font-size-sm)" }}>Have the supplier's invoice? Use Auto GRN: <button type="button" onClick={() => setScanOpen(true)} style={{ border: "none", background: "none", color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", padding: 0 }}>📷 scan it to fill the lines</button></div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
             <label className={styles.selectLabel}>Supplier *
               <select className={styles.select} value={form.supplier_id} onChange={e => setForm(f => ({ ...f, supplier_id: Number(e.target.value) }))}>

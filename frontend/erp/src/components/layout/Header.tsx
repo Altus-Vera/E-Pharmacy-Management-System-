@@ -3,6 +3,7 @@ import { useAuthStore } from "../../store/authStore";
 import { formatUserType } from "../../utils/formatters";
 import { useEffect, useState } from "react";
 import { LANGS, getLang, setLang, onLangChange, type Lang } from "../../i18n";
+import api from "../../services/api";
 import styles from "./Header.module.css";
 
 export function Header() {
@@ -11,7 +12,8 @@ export function Header() {
   const [lang, setL] = useState<Lang>(getLang());
   useEffect(() => onLangChange(setL), []);
 
-  function handleLogout() {
+  async function handleLogout() {
+    try { await api.post("/auth/logout"); } catch { /* ignore */ }
     clearAuth();
     navigate("/login");
   }

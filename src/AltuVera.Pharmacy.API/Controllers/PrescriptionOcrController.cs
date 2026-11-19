@@ -47,12 +47,10 @@ public class PrescriptionOcrController(PrescriptionOcr ocr, IWebHostEnvironment 
             var i = 0;
             foreach (var f in files)
             {
-                var type = f.ContentType.ToLowerInvariant();
-                if (!Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo." });
                 if (f.Length > 5_000_000) return BadRequest(new { detail = $"{f.FileName} is over 5 MB. Send a smaller photo." });
-                using var ms = new MemoryStream();
-                await f.CopyToAsync(ms, ct);
-                var bytes = ms.ToArray();
+                var bytes = await FileSniffer.ReadAllAsync(f, ct);
+                var type = FileSniffer.Detect(bytes);
+                if (type is null || !Allowed.Contains(type)) return BadRequest(new { detail = $"{f.FileName}: use a JPG, PNG or WebP photo." });
                 images.Add((bytes, type));
                 await System.IO.File.WriteAllBytesAsync(Path.Combine(Dir, $"{id}_{i++}{ExtFor(type)}"), bytes, ct);
             }

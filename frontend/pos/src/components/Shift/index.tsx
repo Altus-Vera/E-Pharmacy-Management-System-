@@ -6,7 +6,10 @@ import { useAuthStore } from "../../store/authStore";
 import { useShiftStore, type Shift } from "../../store/shiftStore";
 import { useCartStore } from "../../store/cartStore";
 import { printHtml, renderShiftReport } from "../../utils/receipt";
+import api from "../../services/api";
 import styles from "./Shift.module.css";
+
+async function callLogout() { try { await api.post("/auth/logout"); } catch { /* ignore */ } }
 
 const money = (n: number) => `Rs. ${n.toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const errText = (e: unknown, fb: string) => (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? fb;
@@ -53,7 +56,7 @@ export function ShiftGate({ children }: { children: ReactNode }) {
         </label>
         {error && <div className={styles.err}>{error}</div>}
         <Button onClick={() => void begin()} disabled={busy}>{busy ? "Starting…" : "Start Shift"}</Button>
-        <button className={styles.linkBtn} onClick={() => { clearAuth(); useShiftStore.getState().reset(); navigate("/login"); }}>Log out</button>
+        <button className={styles.linkBtn} onClick={() => { void callLogout(); clearAuth(); useShiftStore.getState().reset(); navigate("/login"); }}>Log out</button>
       </div>
     </div>
   );
@@ -124,7 +127,7 @@ export function EndShiftModal({ open, onClose }: { open: boolean; onClose: () =>
         footer={<>
           <Button variant="secondary" onClick={() => void printHtml(renderShiftReport(r))}>Print again</Button>
           <Button variant="secondary" onClick={() => { onClose(); setReport(null); }}>Start new shift</Button>
-          <Button onClick={() => { useShiftStore.getState().reset(); clearAuth(); navigate("/login"); }}>Log out</Button>
+          <Button onClick={() => { void callLogout(); useShiftStore.getState().reset(); clearAuth(); navigate("/login"); }}>Log out</Button>
         </>}>
         <div className={Math.abs(d) < 0.005 ? styles.okBox : styles.warnBox}>
           {Math.abs(d) < 0.005 ? "Cash balanced ✓" : d > 0 ? `Cash OVER by ${money(d)}` : `Cash SHORT by ${money(-d)}`}
@@ -198,7 +201,7 @@ export function useLogoutGuard() {
   const navigate = useNavigate();
   const [ask, setAsk] = useState(false);
   const [ending, setEnding] = useState(false);
-  const out = () => { useShiftStore.getState().reset(); clearAuth(); navigate("/login"); };
+  const out = () => { void callLogout(); useShiftStore.getState().reset(); clearAuth(); navigate("/login"); };
   const request = () => (shift ? setAsk(true) : out());
   const dialog = (
     <div className={styles.modalText}>

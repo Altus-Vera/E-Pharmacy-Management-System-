@@ -2,6 +2,7 @@ using AltuVera.Pharmacy.Domain.Enums;
 using AltuVera.Pharmacy.Infrastructure.Data;
 using AltuVera.Pharmacy.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltuVera.Pharmacy.API.Controllers;
@@ -11,6 +12,7 @@ namespace AltuVera.Pharmacy.API.Controllers;
 public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
 {
     [HttpPost("login")]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username && u.IsActive);
@@ -35,10 +37,17 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
         await db.SaveChangesAsync();
 
         var token = jwt.GenerateToken(user);
+        Response.Cookies.Append("access_token", token, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = Request.IsHttps,
+            SameSite = SameSiteMode.Strict,
+            Expires = DateTimeOffset.UtcNow.AddMinutes(
+                double.Parse(HttpContext.RequestServices
+                    .GetRequiredService<IConfiguration>()["Jwt:ExpiryMinutes"] ?? "60")),
+        });
         return Ok(new
         {
-            access_token = token,
-            token_type = "bearer",
             user = new
             {
                 id = user.Id,
@@ -47,6 +56,13 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
                 user_type = user.UserType.ToString().ToLower(),
             }
         });
+    }
+
+    [HttpPost("logout")]
+    public IActionResult Logout()
+    {
+        Response.Cookies.Delete("access_token");
+        return Ok(new { message = "Logged out" });
     }
 
     [HttpPost("change-password")]

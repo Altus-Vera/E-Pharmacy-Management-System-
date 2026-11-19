@@ -97,9 +97,7 @@ public class SystemAdminController(AppDbContext db) : ControllerBase
         var dbName = db.Database.GetDbConnection().Database;
         var file = $"{dbName}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
         db.Database.SetCommandTimeout(600);
-        // BACKUP cannot be parameterised; dbName comes from our own connection string, file name is generated here.
-        var safeDb = dbName.Replace("]", "]]");
-        await db.Database.ExecuteSqlRawAsync($"BACKUP DATABASE [{safeDb}] TO DISK = N'{file}' WITH INIT, NAME = N'AltusVera backup', STATS = 10");
+        await db.Database.ExecuteSqlAsync($"BACKUP DATABASE {dbName} TO DISK = {file} WITH INIT, NAME = N'AltusVera backup', STATS = 10");
         return Ok(new { file, database = dbName, created_at = DateTime.Now, message = "Backup written to the SQL Server default backup folder." });
     }
 
